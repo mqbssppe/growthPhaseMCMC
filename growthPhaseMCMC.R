@@ -109,7 +109,8 @@ singleLocalProposal <- function(cutPoints, nTime, mhSinglePropRange, startPoint)
 }
 
 
-mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, sdValues, dName, timeScale, burn){
+mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, sdValues, dName, timeScale, burn, showProgress){
+	if(missing(showProgress)){showProgress = FALSE}
 	if(missing(timeScale)){timeScale = 1}
 	if(missing(mhPropRange)){mhPropRange = 1}
 	if (missing(modelVariance)){modelVariance = FALSE}
@@ -136,7 +137,7 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 	mhRate3 <- 0
 	myPositions <- floor(seq(0, nTime, length = 7))  #c(0,50,100,150,200,250,300)
 	myLabels <- round(myPositions*timeScale,1)
-
+	uchar <- myUnicodeCharacters()
 	for(iter in 2:nIter){
 		cutPoints[iter, ] <- cutPoints[iter - 1, ]
 		lValues[iter] <- lValues[iter - 1]
@@ -190,6 +191,7 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 			}
 		}
 		lPosterior[iter] <- lValues[iter] + logPrior(cutPoints = cutPoints[iter, ], nTime = nTime, startPoint = startPoint)
+		if(showProgress){
 		if(iter %% 1000 == 0){
 			par(mfrow = c(1,3))
 			plot(lPosterior[1:iter], type= "l", xlab = "mcmc iteration", ylab = "log-Posterior")
@@ -206,6 +208,10 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 			cat(paste0("  Iteration: ", iter, ". MH acceptance rates: (M1) ", 
 				round(mhRate*100/iter,2), "%, (M2) ", 
 				round(mhRate2*100/iter,2) ,"%, (M3) ", round(mhRate3*100/iter,2), "%."),"\n")
+		}
+		}else{
+			if(iter %% 500 == 0){cat(paste0(" ", uchar))}
+			if(iter == nIter ){cat("\n")}			
 		}
 	}
 	results <- vector("list", length = 3)
@@ -311,28 +317,34 @@ getVariance <- function(myDataList, blankThreshold){
 }
 
 
-growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRange, movesRange, startPoint, getSDvalues, timeScale, blankThreshold, savePlots){
+growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRange, movesRange, startPoint, getSDvalues, timeScale, blankThreshold, savePlots, showProgress){
 #	burn = 2000, nIter = 5000,mhPropRange = 1, mhSinglePropRange = 50, getSDvalues = T, startPoint=54, timeScale = 1/6,
 	myColNames <- colnames(myDataList[[1]])
-	if(missing(timeScale)){timeScale = 1}
+	if(missing(timeScale)){timeScale = 1/6}
+	if(missing(showProgress)){showProgress = FALSE}
 	if(missing(blankThreshold)){blankThreshold = 0.02}
+	if(missing(burn)){burn = 2000}
+	if(missing(nIter)){nIter = 5000}
+	if(burn > nIter - 1){stop("`burn` should be smaller than `nIter`.")}
 	if(missing(savePlots)){
 		savePlots = NULL; finalIterationPdf = FALSE
 	}else{ 
 		if(dir.exists(savePlots)){
-			stop(paste0("directory `", savePlots, "` exists, use another name."))
+			stop(paste0("directory `",getwd(),"/", savePlots, "` exists, use another name."))
 		}else{
 			dir.create(savePlots)
-			cat(paste0("plots will be save to directory: `",savePlots,"`"),"\n")
+			cat(paste0("*  Plots will be saved to directory: `",getwd(),"/",savePlots,"`"),"\n")
 		} 
 	}
 	if(missing(startPoint)){ startPoint = 2 }
+	if( startPoint < 2){ startPoint = 2 }
 	if(missing(mhPropRange)){mhPropRange = 1}
-	if(missing(mhSinglePropRange)){mhSinglePropRange = 1}
+	if(missing(mhSinglePropRange)){mhSinglePropRange = 50}
 	if(missing(movesRange)){movesRange = as.character(1:3)}
-	if(missing(getSDvalues)){getSDvalues = FALSE; sdValues = NULL}
+	if(missing(getSDvalues)){getSDvalues = TRUE}
+	if(getSDvalues == FALSE){sdValues = NULL}
 	if(getSDvalues == TRUE){
-		cat(paste0("estimating variances... "))
+		cat(paste0("*  Estimating variances... "))
 		sdValues <- getVariance(myDataList = myDataList)
 		cat(paste0(" done.","\n"))
 	}
@@ -344,8 +356,10 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 	areaVarPerPhase <- array(data=NA, dim = c(n, 3))
 	colnames(areaMeanPerPhase) <- colnames(areaVarPerPhase) <- c("phase_1", "phase_2", "phase_3")
 	if(nReps < 2){stop("no replicates")}
+	cat(paste0("*  MCMC sampler parameters: nIter = ", nIter, ", burn = ", burn, ", startPoint = ", startPoint ),"\n")
+	cat(paste0("*  Running MCMC for ", n, " subjects..."), "\n")	
 	for (i in 1:n){
-		cat(paste0("____________________________________ i = ", i, ", name: ", myColNames[i] ," ______________________________"),"\n")
+		cat(paste0("*    i = ", i, ", name: ", myColNames[i] ))
 		myData <- myDataList[[1]][ , i]
 		if( max( myData ) < blankThreshold ){
 			cat(paste0("  SKIPPED: this seems like a blank well.","\n"))
@@ -355,7 +369,7 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 			}
 			mhRunForSubject <- mhSampler(myData = myData, nIter = nIter, mhPropRange = mhPropRange, dName = myColNames[i], burn = burn,
 							mhSinglePropRange = mhSinglePropRange, movesRange = movesRange, finalIterationPdf = savePlots,
-							startPoint = startPoint, sdValues = sdValues, timeScale = timeScale)
+							startPoint = startPoint, sdValues = sdValues, timeScale = timeScale, showProgress = showProgress)
 			cutPoints[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, median)
 			cutPointsVar[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, var)
 			getArea <- areaPerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
@@ -364,14 +378,23 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 		}
 	}
 	results <- vector("list", length = 4)
-	results[[1]] <- cutPoints
-	results[[2]] <- cutPointsVar
+	results[[1]] <- cutPoints*timeScale
+	results[[2]] <- cutPointsVar*(timeScale^2)
 	results[[3]] <- areaMeanPerPhase
 	results[[4]] <- areaVarPerPhase
 	names(results) <- c("posteriorMedian", "posteriorVar", "areaMean", "areaVar")
+	cat(paste0("*  All done."),"\n")
+	if(missing(savePlots) == FALSE){ 
+		cat(paste0("*  See produced *.pdf files in: `",getwd(),"/",savePlots,"`"),"\n")
+	}
+
 	return(results)
 
 }
 
-
+myUnicodeCharacters <- function(){
+	mySymbols <- c("\U0000A4", "\U0000A3", "\U0000A5", "\U000285","\U0009F8", "\U000E5B","\U001405","\U001518","\U001620","\U0018F2","\U00204D","\U0021AF","\U00220E","\U00261D","\U00262F",
+"\U00266C","\U00267B","\U002687","\U002713","\U002730","\U00272A", "\U0027C6","\U002FC2","\U00265E","\U00269D","\U002A12", "\U002605", "\U0029EB", "\U002300", "\U002301", "\U002302", "\U002303", "\U002304", "\U002305", "\U002306", "\U002307", "\U002308", "\U002309")
+	return(mySymbols[floor(length(mySymbols)*runif(1)+1)])
+}
 
