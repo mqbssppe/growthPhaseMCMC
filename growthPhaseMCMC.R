@@ -210,10 +210,13 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 				round(mhRate*100/iter,2), "%, (M2) ", 
 				round(mhRate2*100/iter,2) ,"%, (M3) ", round(mhRate3*100/iter,2), "%."),"\n")
 		}
-		}else{
-			if(iter %% 500 == 0){cat(paste0(uchar, " "))}
-			if(iter == nIter ){cat("\n")}			
 		}
+		else{
+			if(iter %% (nIter/2) == 0){cat(paste0(uchar, " "))}
+		}
+	}
+	if(showProgress == FALSE){
+		cat(paste0(" Accepted MH moves: [Move 1] ", round(mhRate*100/iter,2), "%, [Move 2] ",round(mhRate2*100/iter,2) ,"%, [Move 3] ", round(mhRate3*100/iter,2), "%."),"\n")
 	}
 	results <- vector("list", length = 3)
 	results[[1]] <- cutPoints
@@ -402,7 +405,7 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 		cat(paste0("*    i = ", i, ", name: ", myColNames[i], " " ))
 		myData <- myDataList[[1]][ , i]
 		if( max( myData ) < blankThreshold ){
-			cat(paste0("  SKIPPED: this looks like a blank well.","\n"))
+			cat(paste0("                [SKIPPED] this looks like a blank well.","\n"))
 			NAindex <- c(NAindex, i)
 		}else{
 			for (j in 2:nReps){
