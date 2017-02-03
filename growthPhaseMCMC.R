@@ -371,7 +371,7 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 			cat(paste0("*  Plots will be saved to directory: `",getwd(),"/",savePlots,"`"),"\n")
 		} 
 	}
-	if(missing(startPoint)){ startPoint = 2 }
+	if(missing(startPoint)){ startPoint = 48 }
 	if( startPoint < 2){ startPoint = 2 }
 	if(missing(mhPropRange)){mhPropRange = 1}
 	if(missing(mhSinglePropRange)){mhSinglePropRange = 50}
