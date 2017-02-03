@@ -1,3 +1,4 @@
+library(mvoutlier)
 
 logLikelihood <- function(myData, cutPoints, sdPerPoint, modelVariance, startPoint){
 	if(missing(modelVariance)){modelVariance = FALSE}
@@ -210,7 +211,7 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 				round(mhRate2*100/iter,2) ,"%, (M3) ", round(mhRate3*100/iter,2), "%."),"\n")
 		}
 		}else{
-			if(iter %% 500 == 0){cat(paste0(" ", uchar))}
+			if(iter %% 500 == 0){cat(paste0(uchar, " "))}
 			if(iter == nIter ){cat("\n")}			
 		}
 	}
@@ -294,6 +295,35 @@ areaPerPhase <- function(cutPoints, myData, timeScale){
 }
 
 
+
+ratePerPhase <- function(cutPoints, myData, timeScale){
+	m <- dim(cutPoints)[1]
+	nCutPoints <- dim(cutPoints)[2]
+	myRates <- array(data = NA, dim = c(m, nCutPoints))
+	myMeans <- rowMeans(myData)
+	if(missing(timeScale)){timeScale = 1}
+
+	for (i in 1:m){
+		xValues <- c(1, cutPoints[i,])
+		yValues <- myMeans[xValues]
+		myRates[i, ] <- diff(yValues)/(diff(xValues)*timeScale)
+	}
+	Sresults <- array(data = NA, dim = c(3, 2))
+	colnames(Sresults) <- c("mean", "var")
+	rownames(Sresults) <- c("rate_phase_1", "rate_phase_2", "rate_phase_3")
+	Sresults[,1] <- apply(myRates, 2, mean)
+	Sresults[,2] <- apply(myRates, 2, var)
+	results <- vector("list", length=2)
+	names(results) <- c("PosteriorSummary", "mcmc_rates")
+	results[[1]] <- Sresults
+	results[[2]] <- myRates
+	return(results)
+}
+
+
+
+
+
 getVariance <- function(myDataList, blankThreshold){
 	if(missing(blankThreshold)){blankThreshold = 0.02}
 	n <- dim(myDataList[[1]])[2]
@@ -317,7 +347,7 @@ getVariance <- function(myDataList, blankThreshold){
 }
 
 
-growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRange, movesRange, startPoint, getSDvalues, timeScale, blankThreshold, savePlots, showProgress){
+growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRange, movesRange, startPoint, getSDvalues, timeScale, blankThreshold, savePlots, showProgress, zeroNormalization){
 #	burn = 2000, nIter = 5000,mhPropRange = 1, mhSinglePropRange = 50, getSDvalues = T, startPoint=54, timeScale = 1/6,
 	myColNames <- colnames(myDataList[[1]])
 	if(missing(timeScale)){timeScale = 1/6}
@@ -325,12 +355,14 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 	if(missing(blankThreshold)){blankThreshold = 0.02}
 	if(missing(burn)){burn = 2000}
 	if(missing(nIter)){nIter = 5000}
+	if(missing(zeroNormalization)){zeroNormalization = TRUE}
 	if(burn > nIter - 1){stop("`burn` should be smaller than `nIter`.")}
 	if(missing(savePlots)){
 		savePlots = NULL; finalIterationPdf = FALSE
 	}else{ 
 		if(dir.exists(savePlots)){
-			stop(paste0("directory `",getwd(),"/", savePlots, "` exists, use another name."))
+			myPrompt <- readline(paste0("*  [WARNING] Directory `",getwd(),"/", savePlots, "` exists. Overwrite? 1 = YES, 0 = ABORT "))
+			if(myPrompt != 1){stop("Process killed by the user.")}
 		}else{
 			dir.create(savePlots)
 			cat(paste0("*  Plots will be saved to directory: `",getwd(),"/",savePlots,"`"),"\n")
@@ -343,6 +375,11 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 	if(missing(movesRange)){movesRange = as.character(1:3)}
 	if(missing(getSDvalues)){getSDvalues = TRUE}
 	if(getSDvalues == FALSE){sdValues = NULL}
+	if(zeroNormalization){
+		cat(paste0("*  Normalizing at time zero... "))	
+		myDataList <- normalizeTime0(myDataList = myDataList)
+		cat(paste0(" done.","\n"))
+	}
 	if(getSDvalues == TRUE){
 		cat(paste0("*  Estimating variances... "))
 		sdValues <- getVariance(myDataList = myDataList)
@@ -354,15 +391,19 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 	cutPointsVar <- array(data = NA, dim = c(n, 3))
 	areaMeanPerPhase <- array(data=NA, dim = c(n, 3))
 	areaVarPerPhase <- array(data=NA, dim = c(n, 3))
+	rateMeanPerPhase <- array(data=NA, dim = c(n, 3))
+	rateVarPerPhase <- array(data=NA, dim = c(n, 3))
 	colnames(areaMeanPerPhase) <- colnames(areaVarPerPhase) <- c("phase_1", "phase_2", "phase_3")
 	if(nReps < 2){stop("no replicates")}
 	cat(paste0("*  MCMC sampler parameters: nIter = ", nIter, ", burn = ", burn, ", startPoint = ", startPoint ),"\n")
 	cat(paste0("*  Running MCMC for ", n, " subjects..."), "\n")	
+	NAindex <- c()
 	for (i in 1:n){
-		cat(paste0("*    i = ", i, ", name: ", myColNames[i] ))
+		cat(paste0("*    i = ", i, ", name: ", myColNames[i], " " ))
 		myData <- myDataList[[1]][ , i]
 		if( max( myData ) < blankThreshold ){
-			cat(paste0("  SKIPPED: this seems like a blank well.","\n"))
+			cat(paste0("  SKIPPED: this looks like a blank well.","\n"))
+			NAindex <- c(NAindex, i)
 		}else{
 			for (j in 2:nReps){
 				myData <- cbind(myData, myDataList[[j]][ , i])
@@ -373,20 +414,49 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 			cutPoints[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, median)
 			cutPointsVar[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, var)
 			getArea <- areaPerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
+			getRate <- ratePerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
+			rateMeanPerPhase[i, ] <- getRate[,1]
+			rateVarPerPhase[i, ] <- getRate[,2]
 			areaMeanPerPhase[i, ] <- getArea[,1]
 			areaVarPerPhase[i, ] <- getArea[,2]
 		}
 	}
-	results <- vector("list", length = 4)
+
+
+	results <- vector("list", length = 7)
 	results[[1]] <- cutPoints*timeScale
 	results[[2]] <- cutPointsVar*(timeScale^2)
-	results[[3]] <- areaMeanPerPhase
-	results[[4]] <- areaVarPerPhase
-	names(results) <- c("posteriorMedian", "posteriorVar", "areaMean", "areaVar")
-	cat(paste0("*  All done."),"\n")
+	results[[3]] <- rateMeanPerPhase
+	results[[4]] <- rateVarPerPhase
+	results[[5]] <- areaMeanPerPhase
+	results[[6]] <- areaVarPerPhase
+	if(length(NAindex) > 0){
+		myDF <- results[[1]][-NAindex,]
+		rownames(myDF) <- myColNames[-NAindex]
+	}else{
+		myDF <- results[[1]]
+		rownames(myDF) <- myColNames
+	}
+	cat(paste0("*  Outlier detection at the 0.01 level... "),"\n")
+	cat(paste0("*  "),"\n")
+	if(missing(savePlots) == FALSE){
+		pdf(file = paste0(savePlots,"/outliers_projection.pdf"), width = 18, height = 12)
+			mvOut <- aq.plot(myDF, alpha=0.01)
+		dev.off()
+	}else{
+		mvOut <- aq.plot(myDF, alpha=0.01)
+	}
+	results[[7]] <- mvOut$outliers
+	cat(paste0("*  "),"\n")
+	cat(paste0("*                                     ... done."),"\n")
+	rownames(results[[1]]) <- rownames(results[[2]]) <- rownames(results[[3]]) <- rownames(results[[4]]) <- rownames(results[[5]])<- rownames(results[[6]]) <- myColNames
+	names(results) <- c("posteriorMedian", "posteriorVar", "rateMean", "rateVar", "areaMean", "areaVar", "outliers")
+	cat(paste0("*  ALL DONE."),"\n")
 	if(missing(savePlots) == FALSE){ 
 		cat(paste0("*  See produced *.pdf files in: `",getwd(),"/",savePlots,"`"),"\n")
 	}
+
+
 
 	return(results)
 
@@ -394,7 +464,28 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 
 myUnicodeCharacters <- function(){
 	mySymbols <- c("\U0000A4", "\U0000A3", "\U0000A5", "\U000285","\U0009F8", "\U000E5B","\U001405","\U001518","\U001620","\U0018F2","\U00204D","\U0021AF","\U00220E","\U00261D","\U00262F",
-"\U00266C","\U00267B","\U002687","\U002713","\U002730","\U00272A", "\U0027C6","\U002FC2","\U00265E","\U00269D","\U002A12", "\U002605", "\U0029EB", "\U002300", "\U002301", "\U002302", "\U002303", "\U002304", "\U002305", "\U002306", "\U002307", "\U002308", "\U002309")
+"\U00266C","\U00267B","\U002687","\U002713","\U002730","\U00272A", "\U0027C6","\U002FC2","\U00265E","\U00269D","\U002A12", "\U002605", "\U0029EB", "\U002300", "\U002301", "\U002302", "\U002303", "\U002304", "\U002305", "\U002306", "\U002307", "\U002308", "\U002309", "\U0023F0", "\U0023ED", "\U0023E7", "\U0025F4", "\U0025CD", "\U0025B5", "\U002615", "\U002660", "\U0026C7", "\U002667", "\U002706", "\U00270D", "\U0026F7")
 	return(mySymbols[floor(length(mySymbols)*runif(1)+1)])
 }
+
+
+normalizeTime0 <- function(myDataList){
+
+	normalizedData <- myDataList
+	nReps <- length(myDataList)
+	n <- dim(myDataList[[1]])[2]
+	for(i in 1:n){
+		for(j in 1:nReps){
+			valueAtZero <- myDataList[[j]][1,i]
+			normalizedData[[j]][ , i] <- myDataList[[j]][ , i] - valueAtZero
+		}
+	}
+	return(normalizedData)
+}
+
+
+
+
+
+
 
