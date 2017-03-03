@@ -119,7 +119,8 @@ singleLocalProposal <- function(cutPoints, nTime, mhSinglePropRange, startPoint,
 }
 
 
-mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, cutoff, sdValues, dName, timeScale, burn, showProgress){
+mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, 
+			cutoff, sdValues, dName, timeScale, burn, showProgress, yAxisRange){
 	if(missing(showProgress)){showProgress = FALSE}
 	if(missing(timeScale)){timeScale = 1}
 	if(missing(mhPropRange)){mhPropRange = 1}
@@ -128,6 +129,7 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 	if(startPoint < 2){ startPoint = 2 }
 	if(missing(burn)){burn = 1}
 	if(missing(movesRange)){movesRange = as.character(1:3)}
+	if(is.null(yAxisRange)){yAxisRange = range(myData, na.rm = T)}
 	if(is.null(sdValues)){
 		cat(paste0("WARNING: sdValues are not provided."),"\n")
 		sdPerPoint <- sqrt(apply(myData, 1, function(y){max(var(y),10^{-7})}))
@@ -252,7 +254,7 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 		legend("bottomright", c("cut-point of phase 1", "cut-point of phase 2", "cut-point of phase 3"), lty = 1, col = c(2, 3, 4), bty = "n")
 
 		screen( 5 )
-		matplot(myData, type = "l", col = 1, xaxt = "n", xlab = "hours", ylab = "growth")
+		matplot(myData, type = "l", col = 1, xaxt = "n", xlab = "hours", ylab = "growth", ylim = yAxisRange)
 		axis(1, at = myPositions, labels = myLabels)
 		abline(v = apply(cutPoints, 2, median), col = c(2,3,4), lwd = 2)
 		abline(v = startPoint, lty = 4, col = "gray")
@@ -365,7 +367,7 @@ getVariance <- function(myDataList, blankThreshold){
 
 growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRange, 
 	movesRange, startPoint, getSDvalues, timeScale, blankThreshold, savePlots, 
-	showProgress, zeroNormalization, yCutoff = 0.3){
+	showProgress, zeroNormalization, yCutoff = 0.3, yAxisRange = NULL){
 #	burn = 2000, nIter = 5000,mhPropRange = 1, mhSinglePropRange = 50, getSDvalues = T, startPoint=54, timeScale = 1/6,
 	myColNames <- colnames(myDataList[[1]])
 	if(missing(timeScale)){timeScale = 1/6}
@@ -403,6 +405,7 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 		sdValues <- getVariance(myDataList = myDataList)
 		cat(paste0(" done.","\n"))
 	}
+	if(is.null(yAxisRange) == F){ yAxisRange = range(myDataList, na.rm = T) }
 	nReps <- length(myDataList)
 	n <- dim(myDataList[[1]])[2]
 	cutPoints <- array(data = NA, dim = c(n, 3))
@@ -433,7 +436,8 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 			}
 			mhRunForSubject <- mhSampler(myData = myData, nIter = nIter, mhPropRange = mhPropRange, dName = myColNames[i], burn = burn,
 							mhSinglePropRange = mhSinglePropRange, movesRange = movesRange, finalIterationPdf = savePlots,
-							startPoint = startPoint, sdValues = sdValues, timeScale = timeScale, showProgress = showProgress, cutoff = cutoff)
+							startPoint = startPoint, sdValues = sdValues, timeScale = timeScale, showProgress = showProgress, 
+							cutoff = cutoff, yAxisRange = yAxisRange)
 			cutPoints[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, median)
 			cutPointsVar[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, var)
 			getArea <- areaPerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
