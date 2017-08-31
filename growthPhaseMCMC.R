@@ -110,7 +110,7 @@ singleLocalProposal <- function(cutPoints, nTime, mhSinglePropRange, startPoint)
 }
 
 
-mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, sdValues, dName, timeScale, burn, showProgress){
+mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, sdValues, dName, timeScale, burn, showProgress, iterPerPlotPrefix){
 	if(missing(showProgress)){showProgress = FALSE}
 	if(missing(timeScale)){timeScale = 1}
 	if(missing(mhPropRange)){mhPropRange = 1}
@@ -139,6 +139,7 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 	myPositions <- floor(seq(0, nTime, length = 7))  #c(0,50,100,150,200,250,300)
 	myLabels <- round(myPositions*timeScale,1)
 	uchar <- myUnicodeCharacters()
+	if(showProgress){pdf(file = paste0(finalIterationPdf,"/",dName,".pdf"),width = 9, height = 6)}
 	for(iter in 2:nIter){
 		cutPoints[iter, ] <- cutPoints[iter - 1, ]
 		lValues[iter] <- lValues[iter - 1]
@@ -193,18 +194,30 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 		}
 		lPosterior[iter] <- lValues[iter] + logPrior(cutPoints = cutPoints[iter, ], nTime = nTime, startPoint = startPoint)
 		if(showProgress){
-		if(iter %% 1000 == 0){
-			par(mfrow = c(1,3))
-			plot(lPosterior[1:iter], type= "l", xlab = "mcmc iteration", ylab = "log-Posterior")
-			matplot(cutPoints[1:iter,]*timeScale, type = "l", col = 2:4, xlab = "mcmc iteration", lty = 1, ylab = "hours")
+		myStepSize <- 1
+		if(iter > 100){myStepSize <- 5}
+		if(iter > 200){myStepSize <- 10}
+		if(iter > 1000){myStepSize <- 20}
+		if(iter %% myStepSize == 0){
+#			par(mfrow = c(1,3))
+#			plot(lPosterior[1:iter], type= "l", xlab = "mcmc iteration", ylab = "log-Posterior")
+#			matplot(cutPoints[1:iter,]*timeScale, type = "l", col = 2:4, xlab = "mcmc iteration", lty = 1, ylab = "hours")
+#		pdf(file = paste0(finalIterationPdf,"/",dName,"-iter-",iter,".pdf"),width = 9, height = 6)
 			matplot(myData, type = "l", col = 1, xaxt = "n", xlab = "hours", ylab = "growth")
+			xPoints <- c(1, cutPoints[iter,], nTime )
+			yPoints <- apply(myData[xPoints, ], 1, mean)
+			points(xPoints[1:2], yPoints[1:2], type = "l", col = "red", lwd = 4)
+			points(xPoints[2:3], yPoints[2:3], type = "l", col = "green", lwd = 4)
+			points(xPoints[3:4], yPoints[3:4], type = "l", col = "blue", lwd = 4)
+			points(xPoints[4:5], yPoints[4:5], type = "l", col = "gray", lwd = 4)
+			matplot(myData, type = "l", col = 1, add = TRUE)
 			axis(1, at = myPositions, labels = myLabels)
-			abline(v = cutPoints[iter, ], col = c(2,3,4))
-			abline(v = startPoint, lty = 4, col = "gray")
+			#abline(v = cutPoints[iter, ], col = c(2,3,4))
+			#abline(v = startPoint, lty = 4, col = "gray")
 			legend("bottomright", paste0("replicate ",1:3), lty = 1:3)
 			text(x = cutPoints[iter, ] - 20, y = 0.8, c("phase 1", "phase 2", "phase 3"), col = c(2,3,4))
 			if(missing(dName)  == FALSE){
-				title( dName, outer = TRUE , line=-1)
+				title( paste0(dName,", iter = ", iter), outer = TRUE , line=-1)
 			}
 			cat(paste0("  Iteration: ", iter, ". MH acceptance rates: (M1) ", 
 				round(mhRate*100/iter,2), "%, (M2) ", 
@@ -217,6 +230,8 @@ mhSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRan
 	}
 	if(showProgress == FALSE){
 		cat(paste0(" Accepted MH moves: [Move 1] ", round(mhRate*100/iter,2), "%, [Move 2] ",round(mhRate2*100/iter,2) ,"%, [Move 3] ", round(mhRate3*100/iter,2), "%."),"\n")
+	}else{
+		dev.off()
 	}
 	results <- vector("list", length = 3)
 	results[[1]] <- cutPoints
@@ -413,7 +428,7 @@ growthPhaseMCMC <- function(myDataList, burn, nIter, mhPropRange, mhSinglePropRa
 			}
 			mhRunForSubject <- mhSampler(myData = myData, nIter = nIter, mhPropRange = mhPropRange, dName = myColNames[i], burn = burn,
 							mhSinglePropRange = mhSinglePropRange, movesRange = movesRange, finalIterationPdf = savePlots,
-							startPoint = startPoint, sdValues = sdValues, timeScale = timeScale, showProgress = showProgress)
+							startPoint = startPoint, sdValues = sdValues, timeScale = timeScale, showProgress = showProgress, iterPerPlotPrefix = paste0("plot-", i))
 			cutPoints[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, median)
 			cutPointsVar[i, ] <- apply(mhRunForSubject$cutPoints[-(1:burn), ], 2, var)
 			getArea <- areaPerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
