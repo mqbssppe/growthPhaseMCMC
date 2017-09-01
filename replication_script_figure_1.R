@@ -1,9 +1,11 @@
 #-------------------------------------------------------------------------------------------------------------------------------------
-# (1) Download source code:
-# 	https://github.com/mqbssppe/growthPhaseMCMC/blob/master/fullMCMC_complexityPrior.R
-# (2) Download and extract the data:
-#	https://github.com/mqbssppe/growthPhaseMCMC/blob/master/fungal_time_series_dataset.tar.gz
-# (3) Make sure that 'fullMCMC_complexityPrior.R' and the extracted folder 'fungal_time_series_dataset' are in the working directory
+# In a terminal use 
+# (1) > git clone https://github.com/mqbssppe/growthPhaseMCMC  
+# (2) > cd growthPhaseMCMC
+# (3) > tar -zxvf fungal_time_series_dataset.tar.gz
+# (4) > R CMD BATCH replication_script_figure_1.R
+#............................................................................................................
+# or inside R> source('replication_script_figure_1.R')
 #-------------------------------------------------------------------------------------------------------------------------------------
 
 
