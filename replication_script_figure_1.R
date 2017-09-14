@@ -15,7 +15,7 @@ source('fullMCMC_complexityPrior.R')
 # Read data:
 cat("Reading input data", "\n")
 data_folder <- "fungal_time_series_dataset" # contains one *txt file per replicate
-data_files <- list.files(data_folder)
+data_files <- list.files(data_folder, pattern = "replicate")
 nReps <- length(data_files)
 myDataList <- vector("list", length = nReps)
 i <- 0
@@ -42,7 +42,7 @@ burn <- 20000	# burn-in period
 nIter <- 70000	# total MCMC iterations
 LRange = 0:30	# range of possible number of change-points
 tmp_folder <- "temp_folder"	# temporary folder
-run_mcmc <- growthPhaseFullMCMC(myDataList = myDataList, burn = burn, nIter = nIter, blankThreshold = 0.02, 
+run_mcmc <- growthPhaseFullMCMC(myDataList = myDataList, burn = burn, nIter = nIter, 
                         mhSinglePropRange = 40, savePlots = tmp_folder, zeroNormalization = TRUE,
                         showProgress = FALSE, movesRange = c(2, 3), L = 3, LRange = LRange, tau = 0.05, 
                         gammaParameter = gP, nu0 = nu0, alpha0 = alpha0, beta0 = beta0, subsetIndex = myIndex)
