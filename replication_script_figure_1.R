@@ -31,7 +31,8 @@ cat(paste0("Length of each time-series: ", dim(myDataList[[1]])[1]), "\n")
 cat(paste0("Number of replicates: ", nReps), "\n")
 
 # Run the MCMC sampler for a subset of four time-series:
-myIndex <- c(433, 64, 3, 124)
+#myIndex <- c(433, 64, 3, 124)	#old labels with blanks 
+myIndex <- c(392,  62, 3, 117)	# new labels in clean dataset
 # Specify the main parameters of model and sampler:
 gP <- 2		# $\alpha$ 
 nu0 <- 0.1	# $\nu_0$
