@@ -42,6 +42,7 @@ burn <- 20000	# burn-in period
 nIter <- 70000	# total MCMC iterations
 LRange = 0:30	# range of possible number of change-points
 tmp_folder <- "temp_folder"	# temporary folder
+set.seed(1)
 run_mcmc <- growthPhaseFullMCMC(myDataList = myDataList, burn = burn, nIter = nIter, 
                         mhSinglePropRange = 40, savePlots = tmp_folder, zeroNormalization = TRUE,
                         showProgress = FALSE, movesRange = c(2, 3), L = 3, LRange = LRange, tau = 0.05, 
