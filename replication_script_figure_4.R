@@ -59,12 +59,11 @@ for (i in 1:n){
 	}
 	myMeanTimeSeries[i,] <- myMeanTimeSeries[i,]/nReps
 }
-ind <- which(generalSampler$NumberOfCutPoints_MAP == 0)
 library(RColorBrewer)
 myPal <- brewer.pal(n = 4, name = "Set1")
 pdf(file = "fig4.pdf", width = 9, height = 6)
-        matplot(t(myMeanTimeSeries[-ind,]), type = "l", col = myPal[generalSampler$NumberOfCutPoints_MAP[-ind]], lty = 1, xlab = "t", ylab = "average growth level")
-        legend("topleft", col = c(0,myPal), lty = 1, c("MAP number of change-points:", paste0(1:4," (",as.numeric(table(generalSampler$NumberOfCutPoints_MAP))[-1]," mutants)")))
+        matplot(t(myMeanTimeSeries), type = "l", col = myPal[generalSampler$NumberOfCutPoints_MAP], lty = 1, xlab = "t", ylab = "average growth level")
+        legend("topleft", col = c(0,myPal), lty = 1, c("MAP number of change-points:", paste0(1:4," (",as.numeric(table(generalSampler$NumberOfCutPoints_MAP))," mutants)")))
 dev.off()
 
 
