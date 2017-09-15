@@ -67,4 +67,6 @@ pdf(file = "fig4.pdf", width = 9, height = 6)
 dev.off()
 
 
+myDF <- data.frame(read.table("fungal_time_series_dataset/AFUB_GENE_ID.txt", header=TRUE), NUMBER_OF_CHANGEPOINTS = generalSampler$NumberOfCutPoints_MAP)
+
 cat("Done.", "\n")
