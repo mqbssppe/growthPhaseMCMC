@@ -42,6 +42,7 @@ LRange = 0:30	# range of possible number of change-points
 tmp_folder <- "individual_plots"	#  folder
 startPoint = 40 	# apply method imposing the prior restriction that the change-point of the first phase is at least equal to 40
 #	this will take ~ 10 hours to complete
+set.seed(1)
 generalSampler <- growthPhaseFullMCMC(myDataList = myDataList, burn = burn, nIter = nIter, startPoint = startPoint,
                         mhSinglePropRange = 40, savePlots = tmp_folder, zeroNormalization = TRUE,
                         showProgress = FALSE, movesRange = c(2, 3), L = 3, LRange = LRange, tau = 0.05, 
@@ -70,3 +71,6 @@ dev.off()
 myDF <- data.frame(read.table("fungal_time_series_dataset/AFUB_GENE_ID.txt", header=TRUE), NUMBER_OF_CHANGEPOINTS = generalSampler$NumberOfCutPoints_MAP)
 
 cat("Done.", "\n")
+
+
+
