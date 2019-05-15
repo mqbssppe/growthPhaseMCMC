@@ -476,8 +476,7 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 
 	results[[1]] = cutPoints[Lindex,1:L]
 	if(saveTheta == TRUE){
-		thinnedIndex <- Lindex[seq(1,length(Lindex), by = 20)]
-		results[[7]] <- thetaValues[thinnedIndex, ]
+		results[[7]] <- thetaValues[Lindex, ]
 	}
 	if(is.null(finalIterationPdf) == FALSE){
 		pdf(file = paste0(finalIterationPdf,"/",dName,"_mcmcTrace.pdf"), width = 20, height = 10)
@@ -537,7 +536,7 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 
 beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSinglePropRange=40, startPoint = 2, 
 		timeScale, savePlots, zeroNormalization = FALSE, LRange = 0:30, tau = 0.05,
-		gammaParameter = 2, nu0 = 0.1, alpha0 = 1, beta0 = 1, subsetIndex, saveTheta = FALSE, sameVariance = TRUE, Prior = "complexity"){
+		gammaParameter = 2, nu0 = 0.1, alpha0 = 1, beta0 = 1, subsetIndex, saveTheta = TRUE, sameVariance = TRUE, Prior = "complexity"){
 #	burn = 2000, nIter = 5000,mhPropRange = 1, mhSinglePropRange = 50, getSDvalues = T, startPoint=54, timeScale = 1/6,
 	cat("\n")
 	myColNames <- colnames(myDataList[[1]])
@@ -566,7 +565,7 @@ beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSi
 		cat(paste0("*  Assuming a complexity prior distribution on the number of change-points with `gammaParameter = ", gammaParameter,"`."), "\n")	
 	}else{
 		cat(paste0("*  Assuming a Poisson prior distribution on the number of change-points with rate `gammaParameter = ", gammaParameter,"`."), "\n")
-#		cat(paste0("*      [WARNING]: The Poisson distribution is NOT suggested!"), "\n")		
+		cat(paste0("*      [WARNING]: The Poisson distribution is NOT suggested!"), "\n")		
 	}
 	if(zeroNormalization){
 		cat(paste0("*  Normalizing at time zero... "))	
@@ -842,110 +841,80 @@ print.beast.object <- function(x, ...){
 
 
 #' @export
-plot.beast.object <- function (x, fileName, width = 9, height = 6, pointsize = 12, 
-    ylab = "x", xlab = "t", timeScale = 1, myPal, boxwex = 0.20, ...) 
-{
-    if ("beast.object" %in% class(x)) {
-        cat("\n")
-        if (timeScale < 0) {
-            stop("timeScale should be positive.")
-        }
-        subsetIndex <- x$subsetIndex
-        mutantNames <- colnames(x$data[[1]])[subsetIndex]
-        nTime <- dim(x$data[[1]])[1]
-        n <- dim(x$data[[1]])[2]
-        nReps <- length(x$data)
-        xMax <- max(unlist(x$data))
-        xMin <- min(unlist(x$data))
-        myPositions <- floor(seq(0, nTime, length = 10))
-        myLabels <- round(myPositions * timeScale, 1)
-        pdf(fileName, width = width, height = height, pointsize = pointsize)
-        nColors <- length(table(names(unlist(lapply(x$NumberOfCutPoints_MAP, 
-            function(y) {
-                table(y)
-            })))[subsetIndex]))
-        if (nColors < 10) {
-            myPal <- brewer.pal(n = nColors, name = "Set1")
-        }
-        else {
-            stop("the range of possible numbers of change-points is larger than 9, please manually define the colors to `myPal` argument")
-        }
-        myMeanTimeSeries <- array(data = 0, dim = c(n, nTime))
-        for (i in subsetIndex) {
-            for (j in 1:nReps) {
-                myMeanTimeSeries[i, ] <- myMeanTimeSeries[i, 
-                  ] + x$data[[j]][, i]
-            }
-            myMeanTimeSeries[i, ] <- myMeanTimeSeries[i, ]/nReps
-        }
-        if (timeScale == 1) {
-            matplot(t(myMeanTimeSeries[subsetIndex, ]), type = "l", 
-                col = myPal[as.numeric(as.factor(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))], 
-                lty = 1, xlab = "t", ylab = paste0("average ", 
-                  ylab))
-        }
-        else {
-            matplot(t(myMeanTimeSeries[subsetIndex, ]), xaxt = "n", 
-                type = "l", col = myPal[as.numeric(as.factor(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))], 
-                lty = 1, xlab = "t", ylab = paste0("average ", 
-                  ylab))
-            axis(1, at = myPositions, labels = myLabels)
-        }
-        legend("topleft", col = c(0, myPal), lty = 1, c("MAP number of change-points:", 
-            paste0(names(table(unlist(x$NumberOfCutPoints_MAP)[subsetIndex])), 
-                " (", as.numeric(table(unlist(x$NumberOfCutPoints_MAP)[subsetIndex])), 
-                " time-series)")))
-        iter <- 0
-        for (i in subsetIndex) {
-            iter <- iter + 1
-            tmp <- x$data[[1]][, i]
-            if (nReps > 1) {
-                for (j in 2:nReps) {
-                  tmp <- cbind(tmp, x$data[[j]][, i])
-                }
-            }
-            if (timeScale == 1) {
-                matplot(tmp, type = "l", lwd = 2, lty = 1, col = 2:(nReps + 
-                  1), ylim = c(xMin, xMax), ylab = ylab, xlab = xlab, 
-                  main = paste0("", mutantNames[iter], ""))
-            }
-            else {
-                matplot(tmp, xaxt = "n", type = "l", lwd = 2, 
-                  lty = 1, col = 2:(nReps + 1), ylim = c(xMin, xMax), 
-                  ylab = ylab, xlab = xlab, main = paste0("", 
-                    mutantNames[iter], ""))
-                axis(1, at = myPositions, labels = myLabels)
-            }
-            l <- x$NumberOfCutPoints_MAP[[i]]
-		if(l > 0){
-            abline(v = x$Cutpoint_posterior_median[[i]], lty = 3, col = "gray")
+plot.beast.object <- function(x, fileName, width = 9, height = 6, pointsize = 12, ylab = "x", xlab = "t", timeScale = 1, myPal, ...){
+        if( 'beast.object' %in% class(x) ){
+                cat("\n")
+		if(timeScale < 0){stop("timeScale should be positive.")}
+		subsetIndex <- x$subsetIndex
+		mutantNames <- colnames(x$data[[1]])[subsetIndex]	
+		nTime <- dim(x$data[[1]])[1]
+		n <- dim(x$data[[1]])[2]
+		nReps <- length(x$data)
+		xMax <- max(unlist(x$data))
+		myPositions <- floor(seq(0, nTime, length = 10))  
+		myLabels <- round(myPositions*timeScale,1)
+		pdf(fileName, width = width, height = height, pointsize = pointsize)
+#		1st: summary plot
+		nColors <- length(table(names(unlist(lapply(x$NumberOfCutPoints_MAP, function(y){table(y)})))[subsetIndex]))
+		if(nColors < 10){
+			myPal <- brewer.pal(n = nColors, name = "Set1")
+		}else{
+			stop("the range of possible numbers of change-points is larger than 9, please manually define the colors to `myPal` argument")
 		}
-            yRange <- c(0, max(tmp))
-            yPoints <- seq(from = 0, to = xMax, length = l + 
-                2)[-c(1, l + 2)]
-		lY <- length(yPoints)
-		yPoints <- yPoints[lY:1]
-            if(l > 0){
-			if (l == 1) {
-			boxplot(x$Cutpoint_mcmc_trace_map[[i]], horizontal = TRUE, 
-			  add = TRUE, at = yPoints, boxwex = boxwex, col = "gray", 
-			  xaxt = "n")
+		myMeanTimeSeries <- array(data = 0, dim = c(n, nTime))
+		for (i in subsetIndex){
+			for (j in 1:nReps){
+				myMeanTimeSeries[i,] <- myMeanTimeSeries[i,] + x$data[[j]][ ,i]
 			}
-			else {
-			for (j in 1:l) {
-			  boxplot(x$Cutpoint_mcmc_trace_map[[i]][, j], 
-			    horizontal = TRUE, add = TRUE, at = yPoints[j], 
-			    boxwex = boxwex, col = "gray", xaxt = "n")
-			}
-			}
+			myMeanTimeSeries[i,] <- myMeanTimeSeries[i,]/nReps
 		}
+		if(timeScale == 1){
+			matplot(t(myMeanTimeSeries[subsetIndex,]), type = "l", col = myPal[as.numeric(as.factor(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))], lty = 1, xlab = "t", ylab = paste0("average ", ylab))
+		}else{
+			matplot(t(myMeanTimeSeries[subsetIndex,]), xaxt = "n", type = "l", col = myPal[as.numeric(as.factor(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))], lty = 1, xlab = "t", ylab = paste0("average ", ylab))
+			axis(1, at=myPositions,labels=myLabels)
+		}
+		legend("topleft", col = c(0,myPal), lty = 1, c("MAP number of change-points:", paste0(names(table(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))," (",as.numeric(table(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))," time-series)")))
+		
+#		then, individual plots
+			iter <- 0
+			for (i in subsetIndex){
+				iter <- iter+1
+				tmp <- x$data[[1]][,i] 
+				if(nReps > 1){
+					for(j in 2:nReps){
+						tmp <- cbind(tmp, x$data[[j]][,i])
+					}
+				}
+				if(timeScale == 1){
+					matplot(tmp, 
+							type = "l", lwd = 2, lty = 1, col = 2:(nReps+1), ylim = c(0,xMax), 
+							ylab = ylab, xlab = xlab, main = paste0( "",mutantNames[iter],""))
+				}else{
+					matplot(tmp, xaxt = "n",
+							type = "l", lwd = 2, lty = 1, col = 2:(nReps+1), ylim = c(0,xMax), 
+							ylab = ylab, xlab = xlab, main = paste0( "",mutantNames[iter],""))
+					axis(1, at=myPositions,labels=myLabels)
+				}
+				abline(v = x$Cutpoint_posterior_median[[i]], lty = 3)
+				l <- x$NumberOfCutPoints_MAP[[i]]
+				yRange <- c(0, max(tmp))
+				yPoints <- seq(from = 0, to = xMax,length=l+2)[-c(1,l+2)]
+				if(l == 1){
+					boxplot(x$Cutpoint_mcmc_trace_map[[i]], horizontal = TRUE, add = TRUE, at = yPoints, boxwex = 0.3, col = "gray", xaxt = "n")
+				}else{
+					for (j in 1:l){ 
+						boxplot(x$Cutpoint_mcmc_trace_map[[i]][,j], horizontal = TRUE, add = TRUE, at = yPoints[j], boxwex = 0.3, col = "gray", xaxt = "n")
+					}
+				}
+			}
+		dev.off()
+		cat(paste0("See produced file: ", fileName),"\n")
+        }else{
+                cat(paste("    The input is not in class `beast.object`"),'\n')
         }
-        dev.off()
-        cat(paste0("See produced file: ", fileName), "\n")
-    }
-    else {
-        cat(paste("    The input is not in class `beast.object`"), 
-            "\n")
-    }
 }
+
+
+
 

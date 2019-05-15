@@ -1,0 +1,219 @@
+
+R version 3.2.5 (2016-04-14) -- "Very, Very Secure Dishes"
+Copyright (C) 2016 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> pkgname <- "beast"
+> source(file.path(R.home("share"), "R", "examples-header.R"))
+> options(warn = 1)
+> base::assign(".ExTimings", "beast-Ex.timings", pos = 'CheckExEnv')
+> base::cat("name\tuser\tsystem\telapsed\n", file=base::get(".ExTimings", pos = 'CheckExEnv'))
+> base::assign(".format_ptime",
++ function(x) {
++   if(!is.na(x[4L])) x[1L] <- x[1L] + x[4L]
++   if(!is.na(x[5L])) x[2L] <- x[2L] + x[5L]
++   options(OutDec = '.')
++   format(x[1L:3L], digits = 7L)
++ },
++ pos = 'CheckExEnv')
+> 
+> ### * </HEADER>
+> library('beast')
+> 
+> base::assign(".oldSearch", base::search(), pos = 'CheckExEnv')
+> cleanEx()
+> nameEx("beast-package")
+> ### * beast-package
+> 
+> flush(stderr()); flush(stdout())
+> 
+> base::assign(".ptime", proc.time(), pos = "CheckExEnv")
+> ### Name: beast-package
+> ### Title: Bayesian Estimation of Change-Points in the Slope of
+> ###   Multivariate Time-Series
+> ### Aliases: beast-package beast-package
+> ### Keywords: package
+> 
+> ### ** Examples
+> 
+> # toy-example (MCMC iterations not enough)
+> library('beast')	# load package
+> data("FungalGrowthDataset")	# load dataset
+> myIndex <- c(392, 62, 3, 117)	# run the sampler only for the 
+> #                                 specific subset of time-series
+> set.seed(1)	
+> # Run MCMC sampler with very small number of iterations (nIter):
+> run_mcmc <- beast(myDataList = FungalGrowthDataset, subsetIndex = myIndex, 
++ 			zeroNormalization = TRUE, nIter = 40, burn = 20) 
+
+*  Assuming a complexity prior distribution on the number of change-points with `gammaParameter = 2`. 
+*  Normalizing at time zero...  done.
+*  Computing posterior parameters...  using the same variance per time series...  done.
+*  MCMC sampler parameters: nIter = 40, burn = 20, startPoint = 2 
+*  Running MCMC for 411 subjects... 
+*                [NOTE] skipping 407 subjects 
+*    i = 3, name: plate_1_A3 ◍ ◍ ◍ ◍  Accepted MH moves: [l_n] 5%, [θ+ε] 62.5%, [τ] 10%, [τ_j] 0%. 
+     Most probable number of cutpoints equals 2 with: P(l_n = 2|x) = 0.9 
+*    i = 62, name: plate_1_F4 ⌇ ⌇ ⌇ ⌇  Accepted MH moves: [l_n] 0%, [θ+ε] 47.5%, [τ] 45%, [τ_j] 20%. 
+     Most probable number of cutpoints equals 1 with: P(l_n = 1|x) = 1 
+*    i = 117, name: plate_2_C4 ⌆ ⌆ ⌆ ⌆  Accepted MH moves: [l_n] 10%, [θ+ε] 57.5%, [τ] 20%, [τ_j] 10%. 
+     Most probable number of cutpoints equals 5 with: P(l_n = 5|x) = 1 
+*    i = 392, name: plate_5_E1 ⌀ ⌀ ⌀ ⌀  Accepted MH moves: [l_n] 5%, [θ+ε] 55%, [τ] 5%, [τ_j] 10%. 
+     Most probable number of cutpoints equals 3 with: P(l_n = 3|x) = 1 
+*  ALL DONE. 
+> # Print output:
+> print(run_mcmc)
+
+Table of frequencies of the most probable number of change-points: 
+
+1 2 3 5 
+1 1 1 1 
+
+Summary per time-series: 
+plate_5_E1:  P(3 change-points|data) = 1 located at 19 151 283 
+plate_1_F4:  P(1 change-points|data) = 1 located at 90 
+plate_1_A3:  P(2 change-points|data) = 0.9 located at 145 231 
+plate_2_C4:  P(5 change-points|data) = 1 located at 68 159 184 252 259 
+
+> # Plot output to file: "beast_plot.pdf"
+> plot(run_mcmc, fileName = "beast_plot_toy.pdf", timeScale=1/6, xlab = "hours", ylab = "growth")
+
+See produced file: beast_plot_toy.pdf 
+> # Run the following commands to obtain convergence:
+> 
+> ## Not run: 
+> ##D # This example illustrates the package using a subset of four 
+> ##D #      time-series of the fungal dataset. 
+> ##D library('beast')	# load package
+> ##D data("FungalGrowthDataset")	# load dataset
+> ##D myIndex <- c(392, 62, 3, 117)	# run the sampler only for the 
+> ##D #                                 specific subset of time-series
+> ##D set.seed(1)		# optional
+> ##D # Run MCMC sampler with the default number of iterations (nIter =70000):
+> ##D run_mcmc <- beast(myDataList = FungalGrowthDataset, subsetIndex = myIndex, 
+> ##D 			zeroNormalization = TRUE) 
+> ##D # Print output:
+> ##D print(run_mcmc)
+> ##D # Plot output to file: "beast_plot.pdf"
+> ##D plot(run_mcmc, fileName = "beast_plot.pdf", timeScale=1/6, xlab = "hours", ylab = "growth")
+> ##D # NOTE 1: for a complete analysis remove the `subsetIndex = myIndex` argument.
+> ##D # NOTE 2: `zeroNormalization = TRUE` is an optional argument that forces all 
+> ##D #	   time-series to start from zero. It is not supposed to be used 
+> ##D #	   for other applications.
+> ## End(Not run)
+> 
+> 
+> 
+> base::assign(".dptime", (proc.time() - get(".ptime", pos = "CheckExEnv")), pos = "CheckExEnv")
+> base::cat("beast-package", base::get(".format_ptime", pos = 'CheckExEnv')(get(".dptime", pos = "CheckExEnv")), "\n", file=base::get(".ExTimings", pos = 'CheckExEnv'), append=TRUE, sep="\t")
+> cleanEx()
+> nameEx("beast")
+> ### * beast
+> 
+> flush(stderr()); flush(stdout())
+> 
+> base::assign(".ptime", proc.time(), pos = "CheckExEnv")
+> ### Name: beast
+> ### Title: Main function
+> ### Aliases: beast
+> 
+> ### ** Examples
+> 
+> # toy-example (MCMC iterations not enough)
+> library('beast')	# load package
+> data("FungalGrowthDataset")	# load dataset
+> myIndex <- c(392, 62, 3, 117)	# run the sampler only for the 
+> #                                 specific subset of time-series
+> set.seed(1)	
+> # Run MCMC sampler with very small number of iterations (nIter):
+> run_mcmc <- beast(myDataList = FungalGrowthDataset, subsetIndex = myIndex, 
++ 			zeroNormalization = TRUE, nIter = 40, burn = 20) 
+
+*  Assuming a complexity prior distribution on the number of change-points with `gammaParameter = 2`. 
+*  Normalizing at time zero...  done.
+*  Computing posterior parameters...  using the same variance per time series...  done.
+*  MCMC sampler parameters: nIter = 40, burn = 20, startPoint = 2 
+*  Running MCMC for 411 subjects... 
+*                [NOTE] skipping 407 subjects 
+*    i = 3, name: plate_1_A3 ◍ ◍ ◍ ◍  Accepted MH moves: [l_n] 5%, [θ+ε] 62.5%, [τ] 10%, [τ_j] 0%. 
+     Most probable number of cutpoints equals 2 with: P(l_n = 2|x) = 0.9 
+*    i = 62, name: plate_1_F4 ⌇ ⌇ ⌇ ⌇  Accepted MH moves: [l_n] 0%, [θ+ε] 47.5%, [τ] 45%, [τ_j] 20%. 
+     Most probable number of cutpoints equals 1 with: P(l_n = 1|x) = 1 
+*    i = 117, name: plate_2_C4 ⌆ ⌆ ⌆ ⌆  Accepted MH moves: [l_n] 10%, [θ+ε] 57.5%, [τ] 20%, [τ_j] 10%. 
+     Most probable number of cutpoints equals 5 with: P(l_n = 5|x) = 1 
+*    i = 392, name: plate_5_E1 ⌀ ⌀ ⌀ ⌀  Accepted MH moves: [l_n] 5%, [θ+ε] 55%, [τ] 5%, [τ_j] 10%. 
+     Most probable number of cutpoints equals 3 with: P(l_n = 3|x) = 1 
+*  ALL DONE. 
+> # Print output:
+> print(run_mcmc)
+
+Table of frequencies of the most probable number of change-points: 
+
+1 2 3 5 
+1 1 1 1 
+
+Summary per time-series: 
+plate_5_E1:  P(3 change-points|data) = 1 located at 19 151 283 
+plate_1_F4:  P(1 change-points|data) = 1 located at 90 
+plate_1_A3:  P(2 change-points|data) = 0.9 located at 145 231 
+plate_2_C4:  P(5 change-points|data) = 1 located at 68 159 184 252 259 
+
+> # Plot output to file: "beast_plot.pdf"
+> plot(run_mcmc, fileName = "beast_plot_toy.pdf", timeScale=1/6, xlab = "hours", ylab = "growth")
+
+See produced file: beast_plot_toy.pdf 
+> # Run the following commands to obtain convergence:
+> 
+> ## Not run: 
+> ##D # This example illustrates the package using a subset of four 
+> ##D #      time-series of the fungal dataset. 
+> ##D library('beast')	# load package
+> ##D data("FungalGrowthDataset")	# load dataset
+> ##D myIndex <- c(392, 62, 3, 117)	# run the sampler only for the 
+> ##D #                                 specific subset of time-series
+> ##D set.seed(1)		# optional
+> ##D # Run MCMC sampler with the default number of iterations (nIter =70000):
+> ##D run_mcmc <- beast(myDataList = FungalGrowthDataset, subsetIndex = myIndex, 
+> ##D 			zeroNormalization = TRUE) 
+> ##D # Print output:
+> ##D print(run_mcmc)
+> ##D # Plot output to file: "beast_plot.pdf"
+> ##D plot(run_mcmc, fileName = "beast_plot.pdf", timeScale=1/6, xlab = "hours", ylab = "growth")
+> ##D # NOTE 1: for a complete analysis remove the `subsetIndex = myIndex` argument.
+> ##D # NOTE 2: `zeroNormalization = TRUE` is an optional argument that forces all 
+> ##D #	   time-series to start from zero. It is not supposed to be used 
+> ##D #	   for other applications.
+> ## End(Not run)
+> 
+> 
+> 
+> base::assign(".dptime", (proc.time() - get(".ptime", pos = "CheckExEnv")), pos = "CheckExEnv")
+> base::cat("beast", base::get(".format_ptime", pos = 'CheckExEnv')(get(".dptime", pos = "CheckExEnv")), "\n", file=base::get(".ExTimings", pos = 'CheckExEnv'), append=TRUE, sep="\t")
+> ### * <FOOTER>
+> ###
+> options(digits = 7L)
+> base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
+Time elapsed:  2.739 0.027 2.769 0 0 
+> grDevices::dev.off()
+null device 
+          1 
+> ###
+> ### Local variables: ***
+> ### mode: outline-minor ***
+> ### outline-regexp: "\\(> \\)?### [*]+" ***
+> ### End: ***
+> quit('no')

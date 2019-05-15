@@ -476,8 +476,7 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 
 	results[[1]] = cutPoints[Lindex,1:L]
 	if(saveTheta == TRUE){
-		thinnedIndex <- Lindex[seq(1,length(Lindex), by = 20)]
-		results[[7]] <- thetaValues[thinnedIndex, ]
+		results[[7]] <- thetaValues[Lindex, ]
 	}
 	if(is.null(finalIterationPdf) == FALSE){
 		pdf(file = paste0(finalIterationPdf,"/",dName,"_mcmcTrace.pdf"), width = 20, height = 10)
@@ -537,7 +536,7 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 
 beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSinglePropRange=40, startPoint = 2, 
 		timeScale, savePlots, zeroNormalization = FALSE, LRange = 0:30, tau = 0.05,
-		gammaParameter = 2, nu0 = 0.1, alpha0 = 1, beta0 = 1, subsetIndex, saveTheta = FALSE, sameVariance = TRUE, Prior = "complexity"){
+		gammaParameter = 2, nu0 = 0.1, alpha0 = 1, beta0 = 1, subsetIndex, saveTheta = TRUE, sameVariance = TRUE, Prior = "complexity"){
 #	burn = 2000, nIter = 5000,mhPropRange = 1, mhSinglePropRange = 50, getSDvalues = T, startPoint=54, timeScale = 1/6,
 	cat("\n")
 	myColNames <- colnames(myDataList[[1]])
@@ -566,7 +565,7 @@ beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSi
 		cat(paste0("*  Assuming a complexity prior distribution on the number of change-points with `gammaParameter = ", gammaParameter,"`."), "\n")	
 	}else{
 		cat(paste0("*  Assuming a Poisson prior distribution on the number of change-points with rate `gammaParameter = ", gammaParameter,"`."), "\n")
-#		cat(paste0("*      [WARNING]: The Poisson distribution is NOT suggested!"), "\n")		
+		cat(paste0("*      [WARNING]: The Poisson distribution is NOT suggested!"), "\n")		
 	}
 	if(zeroNormalization){
 		cat(paste0("*  Normalizing at time zero... "))	

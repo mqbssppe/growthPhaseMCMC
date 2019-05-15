@@ -1,0 +1,8 @@
+exportPattern("^[[:alpha:]]+")
+S3method(print, beast.object)
+S3method(plot, beast.object)
+importFrom("graphics", "legend", "matplot", "boxplot", "points", "plot", "split.screen", "screen", "barplot", "axis", "abline", "text", "title", "close.screen")
+importFrom("stats", "dnorm","rnorm", "dpois", "ppois", "rbeta", "rgamma", "runif", "median", "var", "density")
+importFrom("grDevices", "pdf", "dev.off")
+import(RColorBrewer)
+

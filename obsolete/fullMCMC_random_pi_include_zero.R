@@ -1,3 +1,5 @@
+#library("mvoutlier")
+library("truncnorm")
 
 simMultiIndNormInvGamma <- function(mu, nu, alpha, beta){
 	m <- length(mu)
@@ -13,6 +15,25 @@ simMultiIndNormInvGamma <- function(mu, nu, alpha, beta){
 	names(results) <- c("mean", "variance")
 	return(results)
 }
+
+
+
+replaceIndexWithMean <- function(mu, nu, alpha, beta, myIndex){
+	m <- length(mu)
+	sigma2 <- beta/(alpha - 1)
+	mySd <- sqrt( sigma2/nu )
+	simMeans <- rnorm(n = m, mean = 0, sd = 1)
+	simMeans <- mu + simMeans*mySd
+	simMeans[myIndex] <- mu[myIndex]
+	results <- vector("list", length = 2)
+	results[[1]] <- simMeans
+	results[[2]] <- sigma2
+	names(results) <- c("mean", "variance")
+	return(results)
+}
+
+
+
 
 
 proposeTheta <- function(thetaOld, tau, alpha, beta){
@@ -51,6 +72,29 @@ logLikelihoodFullModel <- function(myData, cutPoints, theta, startPoint){
 		zData <- (myData - myMeanMatrix)/mySDMatrix
 		logL <- sum( apply(zData, 1, function(y){ sum(dnorm(y, mean = 0, sd = 1, log = TRUE)) })   )
 	}
+	return(logL)	
+}
+
+
+logLikelihoodStandardModel <- function(myData, theta){
+	nTime <- dim(myData)[1]
+	sdPerPoint <- sqrt( theta$var )		
+	myMeanMatrix <- matrix(theta$mean, nrow = nTime, ncol = dim(myData)[2] )
+	mySDMatrix <- matrix(sdPerPoint, nrow = nTime, ncol = dim(myData)[2] )
+	zData <- (myData - myMeanMatrix)/mySDMatrix
+	logL <- sum( apply(zData, 1, function(y){ sum(dnorm(y, mean = 0, sd = 1, log = TRUE)) })   )
+	return(logL)	
+}
+
+
+partialLogLikelihoodStandardModel <- function(myData, theta, cutPoints){
+	nTime <- dim(myData)[1]
+	augmentedCutPoints <- c(1, cutPoints, nTime )
+	sdPerPoint <- sqrt( theta$var[augmentedCutPoints] )		
+	myMeanMatrix <- matrix(theta$mean[augmentedCutPoints], nrow = length(cutPoints) + 2, ncol = dim(myData)[2] )
+	mySDMatrix <- matrix(sdPerPoint, nrow = length(cutPoints) + 2, ncol = dim(myData)[2] )
+	zData <- (myData[augmentedCutPoints, ] - myMeanMatrix)/mySDMatrix
+	logL <- sum( apply(zData, 1, function(y){ sum(dnorm(y, mean = 0, sd = 1, log = TRUE)) })   )
 	return(logL)	
 }
 
@@ -161,27 +205,59 @@ birthProbs <- function(LRange){
 
 
 
-truncatedPoisson <- function(Lmax = 20, gammaParameter = 1){
+truncatedPoisson <- function(Lmax = 20, gammaParameter){
+	# default: gammaParameter = 6
         logPrior <- log(numeric(Lmax))
-        Lmin = 0
-        logPrior1 <- dpois(0:Lmax, lambda=gammaParameter)
-        logPrior1 <- logPrior1/sum(logPrior1)
-        logPrior <- log(logPrior1)
-	names(logPrior) <- 0:Lmax
-	return(logPrior)
-}
-
-
-complexityPrior <- function(Lmax = 20, gammaParameter, nTime){
 	Lmin = 0
-        logPrior1 <- exp(-(0:Lmax)*gammaParameter*log(3*nTime/(0:Lmax)))
-	logPrior1[1] <- 1
+        logPrior1 <- exp(-(0:Lmax)*gammaParameter)
         logPrior1 <- logPrior1/sum(logPrior1)
-        logPrior <- log(logPrior1)
+        logPrior <- logPrior1
 	names(logPrior) <- 0:Lmax
 	return(logPrior)
 
 }
+
+
+priorNumberOfCutpoints <- function(epsilon, LRange, secondComponent){
+	if(epsilon > 1){stop("epsilon should be less than 1.")}
+	if(epsilon < 0){stop("epsilon should be larger than 0.")}
+	
+	Lmax <- max(LRange)
+	Lmin <- 0
+	# truncatedPoisson (this is not logged)
+        logPrior <- secondComponent
+
+	diracPrior <- rep(0,Lmax+1)
+	diracPrior[1] <- 1
+	diracPrior <- diracPrior/sum(diracPrior)
+	finalPrior <- (1-epsilon)*diracPrior + epsilon*logPrior
+	logPrior <- log(finalPrior)
+	names(logPrior) <- 0:Lmax
+	return(logPrior)
+	
+}
+
+
+
+updateEpsilon <- function(epsilon_current, beta_prior_parameters, proposal_sd, secondComponent, L, Lmax){
+	# proposal via the truncated normal distribution in the (0,1) interval
+	epsilon_new <- rtruncnorm(n = 1, a = 0, b = 1, mean = epsilon_current, sd = proposal_sd)
+	dens_epsilon_new <- log(dtruncnorm(x = epsilon_new, a = 0, b = 1, mean = epsilon_current, sd = proposal_sd))
+	dens_epsilon_current <- log(dtruncnorm(x = epsilon_current, a = 0, b = 1, mean = epsilon_new, sd = proposal_sd))
+	prop_dens_ratio <- dens_epsilon_current - dens_epsilon_new
+	target_dens_new <- (beta_prior_parameters[1] - 1)*log(epsilon_new) + (beta_prior_parameters[2] - 1)*log(1-epsilon_new) + 
+				priorNumberOfCutpoints(epsilon = epsilon_new, LRange = 0:Lmax, secondComponent = secondComponent)[L+1]
+	target_dens_current <- (beta_prior_parameters[1] - 1)*log(epsilon_current) + (beta_prior_parameters[2] - 1)*log(1-epsilon_current) + 
+				priorNumberOfCutpoints(epsilon = epsilon_current, LRange = 0:Lmax, secondComponent = secondComponent)[L+1]
+	target_dens_ratio <- target_dens_new - target_dens_current
+	mh_ratio <- target_dens_ratio + prop_dens_ratio
+	myResult <- vector("list", length = 2)
+	myResult[[1]] <- mh_ratio
+	myResult[[2]] <- epsilon_new
+	names(myResult) <- c("mh_ratio", "epsilon_new")
+	return(myResult)
+}
+
 
 
 
@@ -238,9 +314,10 @@ updateNumberOfCutpoints <- function(cutPoints, nTime, startPoint, LRange, birthP
 
 
 mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropRange, mhSinglePropRange, movesRange, startPoint, 
-		postPar, dName, timeScale, burn,  iterPerPlotPrefix, priorParameters, L = 3, LRange, tau, 
-		gammaParameter, saveTheta, Prior = "complexity"){
+		postPar, dName, timeScale, burn, showProgress, iterPerPlotPrefix, priorParameters, L = 3, LRange, tau, 
+		beta_prior_parameters, epsilon_proposal_sd, gammaParameter){
 	# tau is the sd of the MH proposal
+	if(missing(showProgress)){showProgress = FALSE}
 	if(missing(timeScale)){timeScale = 1}
 	if(missing(mhPropRange)){mhPropRange = 1}
 	if (missing(modelVariance)){modelVariance = FALSE}
@@ -251,23 +328,29 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 	if (missing(finalIterationPdf)){ finalIterationPdf = NULL }
 	if (missing(LRange)){LRange = L}
 	Lmax <- max(LRange)
+	truncPois <- truncatedPoisson(Lmax = Lmax, gammaParameter = gammaParameter)
 	nTime <- dim(myData)[1]
-	if(Prior == "complexity"){
-		logPriorNPoints <- complexityPrior(Lmax = Lmax, gammaParameter = gammaParameter, nTime = nTime)
-	}else{
-		logPriorNPoints <- truncatedPoisson(Lmax = Lmax, gammaParameter = gammaParameter)
-	}
 	cutPoints <- array(data = NA, dim = c(nIter, Lmax))
-	if(saveTheta == TRUE){
-		thetaValues <- array(data = NA, dim = c(nIter, nTime))
-	}
 	Lvalues <- numeric(nIter)
 	mu <- array(data = NA, dim = c(nIter, nTime))
 	sigma2 <- array(data = NA, dim = c(nIter, nTime))
 	iter <- 1
-#	L <- Lvalues[iter] <- floor(Lmax/2)
-	L <- Lvalues[iter] <- 1
-	cutPoints[iter, 1:L] <- startPoint + (1:L)*floor((nTime - startPoint)/(L+1))
+	L <- Lvalues[iter] <- Lmax
+	cutPoints[iter, 1:L] <- startPoint + (1:Lmax)*floor((nTime - startPoint)/Lmax)
+
+#	if( L == 3){
+#		cutPoints[iter, 1:L] <- c(startPoint + 1, startPoint + 10, startPoint + 30)
+#	}else{
+#		cutPoints[iter, 1] <- startPoint + 1
+#		if(L>1){
+#			for(l in 2:L){
+#				cutPoints[iter, l] <- startPoint + 10*(l-1)
+#			}
+#		}
+#	}
+
+
+
 
 	myBirthProbs <- birthProbs(LRange)
 
@@ -289,11 +372,12 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 	myPositions <- floor(seq(0, nTime, length = 10))  #c(0,50,100,150,200,250,300)
 	myLabels <- round(myPositions*timeScale,1)
 	uchar <- myUnicodeCharacters()
-#	epsilonValues <- numeric(nIter)
-#	epsilonValues[1] <- rbeta(n = 1, shape1 = beta_prior_parameters[1], shape2 = beta_prior_parameters[2])
+	epsilonValues <- numeric(nIter)
+	epsilonValues[1] <- rbeta(n = 1, shape1 = beta_prior_parameters[1], shape2 = beta_prior_parameters[2])
 	sampleSD <- sqrt(postPar[[4]]/(postPar[[3]] - 1))
 	#plot(sampleSD)
 	myFl <- floor((nIter/4))
+	if(showProgress){pdf(file = paste0(finalIterationPdf,"/",dName,".pdf"),width = 9, height = 6)}
 	for(iter in 2:nIter){
 		lValues[iter] <- lValues[iter - 1]
 		cutPoints[iter, ] <- cutPoints[iter - 1, ]
@@ -306,10 +390,13 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 		}
 		myProposal <- updateNumberOfCutpoints(cutPoints = cutPoints[iter - 1, 0:L], nTime = nTime, 
 				startPoint = startPoint, LRange = LRange, birthProbs = myBirthProbs)
+#		overkillProposed <- replaceIndexWithMean(mu = postPar[[1]], nu = postPar[[2]], alpha = postPar[[3]], beta = postPar[[4]], myIndex = myProposal$timePoint)
 		overkillProposed <- theta
 		propLogL <- logLikelihoodFullModel(myData = myData, cutPoints = myProposal$newState, theta = overkillProposed, startPoint = startPoint)
 		if(myProposal$moveType != "notValidBirth"){
 			if(myProposal$moveType == "birth"){Lprop = L + 1}else{Lprop = L - 1}
+			logPriorNPoints <- priorNumberOfCutpoints(epsilon = epsilonValues[iter - 1], LRange = LRange, secondComponent = truncPois)
+			#logPriorNPoints <- priorNumberOfCutpoints(epsilon = 1e-4, LRange = LRange, secondComponent = truncPois)
 			mhRatio <- propLogL + logPriorNPoints[as.character(Lprop)] - lValues[iter] - logPriorNPoints[as.character(L)] + myProposal$propRatio
 			if(L > 0){
 				augCutPoints <- c(1, cutPoints[iter, 1:L], nTime )
@@ -335,16 +422,40 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 		}
 		Lvalues[iter] <- L
 #-------------------------------------------------------------------------------------------------------------------------------------
+#		Update epsilon prior (sparsity parameter of the point mass mixture prior)
+		mh <- updateEpsilon(epsilon_current = epsilonValues[iter - 1], 
+				beta_prior_parameters = beta_prior_parameters, 
+				proposal_sd = epsilon_proposal_sd, 
+				secondComponent = truncPois, L = Lvalues[iter], Lmax = Lmax); 
+		epsilonValues[iter] <- epsilonValues[iter - 1];
+		if( log(runif(1)) < mh$mh_ratio ){
+			arEpsilon <- arEpsilon + 1;
+			epsilonValues[iter] <- mh$epsilon_new
+		}
+#-------------------------------------------------------------------------------------------------------------------------------------
+#		Move 0.a: update theta parameters using the standard posterior as proposal
+	#	overkill <- simMultiIndNormInvGamma(mu = postPar[[1]], nu = postPar[[2]], alpha = postPar[[3]], beta = postPar[[4]])
+	#	propCurrent <- partialLogLikelihoodStandardModel(myData = myData, theta = theta, cutPoints = cutPoints[iter, 0:L])
+	#	propNew <- partialLogLikelihoodStandardModel(myData = myData, theta = overkill, cutPoints = cutPoints[iter, 0:L])
+	#	propLogL <- logLikelihoodFullModel(myData = myData, cutPoints = cutPoints[iter, 0:L], theta = overkill, startPoint = startPoint)
+	#	mhRatio <- propLogL + propCurrent - lValues[iter] - propCurrent
+	#	if( log(runif(1)) < mhRatio ){
+	#		lValues[iter] <- propLogL
+	#		mhRate0a <- mhRate0a + 1
+	#		theta$mean <- overkill$mean
+	#		lValues[iter] <- propLogL
+	#	}
+
 
 #		Move 0.c: update all theta parameters using a standard symmetric proposal based on the current values	
 		overkill <- proposeTheta(thetaOld = theta$mean, tau = tau*sampleSD,  alpha = postPar[[3]], beta = postPar[[4]])
 		propLogL <- logLikelihoodFullModel(myData = myData, cutPoints = cutPoints[iter, 0:L], theta = overkill, startPoint = startPoint)
 		mhRatio <- propLogL - lValues[iter]
 		augCutPoints <- c(1, cutPoints[iter, 0:L], nTime )
-#		zCurrent <- (theta$mean[augCutPoints] - priorParameters$mu0[augCutPoints])/sqrt(theta$variance[augCutPoints]/priorParameters$nu0)
-#		zProp <- (overkill$mean[augCutPoints] - priorParameters$mu0[augCutPoints])/sqrt(overkill$variance[augCutPoints]/priorParameters$nu0)
-		zCurrent <- (theta$mean - priorParameters$mu0)/sqrt(theta$variance/priorParameters$nu0)
-		zProp <- (overkill$mean - priorParameters$mu0)/sqrt(overkill$variance/priorParameters$nu0)
+		zCurrent <- (theta$mean[augCutPoints] - priorParameters$mu0[augCutPoints])/sqrt(theta$variance[augCutPoints]/priorParameters$nu0)
+		zProp <- (overkill$mean[augCutPoints] - priorParameters$mu0[augCutPoints])/sqrt(overkill$variance[augCutPoints]/priorParameters$nu0)
+#		zCurrent <- (theta$mean - priorParameters$mu0)/sqrt(theta$variance/priorParameters$nu0)
+#		zProp <- (overkill$mean - priorParameters$mu0)/sqrt(overkill$variance/priorParameters$nu0)
 		priorRatio <- sum(dnorm( x = zProp, mean = 0, sd = 1, log = TRUE)) - sum(dnorm( x = zCurrent, mean = 0, sd = 1, log = TRUE))
 		mhRatio <- mhRatio + priorRatio
 		if( log(runif(1)) < mhRatio ){
@@ -352,30 +463,7 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 			mhRate0c <- mhRate0c + 1
 			theta <- overkill
 		}
-###########################################################################################################
-#		Gibss move: update all theta[-augmentedCutPoints] from the prior.
-		if(Prior == "complexity"){
-		if(iter > burn){
-			overkill <-  simMultiIndNormInvGamma(mu = priorParameters$mu0, 
-								nu = priorParameters$nu0, 
-								alpha = postPar[[3]], 
-								beta = postPar[[4]]
-							)
-			if(L < nTime - 1){
-				theta$mean[-augCutPoints] <- overkill$mean[-augCutPoints]
-			}
-		}
-		}else{
-			overkill <-  simMultiIndNormInvGamma(mu = priorParameters$mu0, 
-								nu = priorParameters$nu0, 
-								alpha = postPar[[3]], 
-								beta = postPar[[4]]
-							)
-			if(L < nTime - 1){
-				theta$mean[-augCutPoints] <- overkill$mean[-augCutPoints]
-			}
-		}
-###########################################################################################################
+
 		chooseMove <- sample(movesRange, 1)
 		if(chooseMove == "1"){
 			if(L > 0){
@@ -448,21 +536,64 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 			}
 		}
 		lPosterior[iter] <- lValues[iter] + logPrior(cutPoints = cutPoints[iter, 0:L], nTime = nTime, startPoint = startPoint)
-		if(saveTheta == TRUE){
-			thetaValues[iter, ] <- theta$mean
+		if(showProgress){
+		myStepSize <- 1
+		if(iter > 100){myStepSize <- 5}
+		if(iter > 200){myStepSize <- 10}
+		if(iter > 1000){myStepSize <- 20}
+		if(iter > 2000){myStepSize <- 50}
+		if(iter > 20000){myStepSize <- 100}
+		if(iter > 30000){myStepSize <- 500}
+		if(iter %% myStepSize == 0){
+#			par(mfrow = c(1,3))
+#			plot(lPosterior[1:iter], type= "l", xlab = "mcmc iteration", ylab = "log-Posterior")
+#			matplot(cutPoints[1:iter,]*timeScale, type = "l", col = 2:4, xlab = "mcmc iteration", lty = 1, ylab = "hours")
+#		pdf(file = paste0(finalIterationPdf,"/",dName,"-iter-",iter,".pdf"),width = 9, height = 6)
+			matplot(myData, type = "l", col = 1, xaxt = "n", xlab = "hours", ylab = "growth")
+			xPoints <- c(1, cutPoints[iter,1:L], nTime )
+			yPoints <- theta$mean[xPoints]
+			for(l in 1:L){
+				points(xPoints[l:(l+1)], yPoints[l:(l+1)], type = "l", col = l+1, lwd = 4)
+			}
+			points(xPoints[(L+1):(L+2)], yPoints[(L+1):(L+2)], type = "l", col = "gray", lwd = 4)
+			matplot(myData, type = "l", col = 1, add = TRUE)
+			axis(1, at = myPositions, labels = myLabels)
+			#abline(v = cutPoints[iter, ], col = c(2,3,4))
+			#abline(v = startPoint, lty = 4, col = "gray")
+			legend("bottomright", paste0("replicate ",1:3), lty = 1:3)
+			text(x = cutPoints[iter, 1:L] - 20, y = 0.8, paste0("phase ", 1:L), col = 2:(L+1))
+			if(missing(dName)  == FALSE){
+				title( paste0(dName,", iter = ", iter), outer = TRUE , line=-1)
+			}
+			cat(paste0("  Iteration: ", iter, ". MH acceptance rates: (M1a) ", 
+				round(mhRate0a*100/iter,2), "%, (M1b) ",
+				round(mhRate0*100/iter,2), "%, (M1c) ",
+				round(mhRate0c*100/iter,2), "%, (M2) ", 
+				round(mhRate*100/iter,2), "%, (M3) ", 
+				round(mhRate2*100/iter,2) ,"%, (M4) ", 
+				round(mhRate3*100/iter,2), "%, (L) ",
+				round(mhRatePoints*100/iter,2),"%, ",
+				"L = ", L, ", epsilon = ", epsilonValues[iter]),"\n")
 		}
-		if(iter %% myFl == 0){cat(paste0(uchar, " "))}
+		}
+		else{
+			if(iter %% myFl == 0){cat(paste0(uchar, " "))}
+		}
 	}
-	acceptanceRates <- c( mhRatePoints*100/iter,  mhRate0c*100/iter, mhRate2*100/iter, mhRate3*100/iter )
-	names(acceptanceRates) <- c("move_l_n", "move_theta_randomWalk", "move_tau_all", "move_tau_j")
-	cat(paste0(" Accepted MH moves: [l_n] ", round(mhRatePoints*100/iter,2), "%, [","\U03B8","+","\U03B5",'] ',round(mhRate0c*100/iter,2) ,"%, [","\U03C4","] ", round(mhRate2*100/iter,2), "%, [","\U03C4","_j] ", round(mhRate3*100/iter,2), "%."),"\n")
-	results <- vector("list", length = 7)
+	acceptanceRates <- c( mhRatePoints*100/iter, arEpsilon*100/iter,  mhRate0c*100/iter, mhRate0a*100/iter, mhRate2*100/iter, mhRate3*100/iter )
+	names(acceptanceRates) <- c("move_l_n", "move_w_n", "move_theta_randomWalk", "move_theta_post", "move_tau_all", "move_tau_j")
+	if(showProgress == FALSE){
+		cat(paste0(" Accepted MH moves: [l_n] ", round(mhRatePoints*100/iter,2), "%, [w_n] ", round(arEpsilon*100/iter,2), "%, [","\U03B8","+","\U03B5",'] ',round(mhRate0c*100/iter,2) ,"%, [","\U03B8","|x] ", round(mhRate0a*100/iter,2),"%, [","\U03C4","] ", round(mhRate2*100/iter,2), "%, [","\U03C4","_j] ", round(mhRate3*100/iter,2), "%."),"\n")
+	}else{
+		dev.off()
+	}
+	results <- vector("list", length = 6)
 	results[[2]] <- lValues
 	results[[3]] <- acceptanceRates
 	results[[4]] <- Lvalues
 	LVtab <- table(Lvalues[-(1:burn)])/(length(Lvalues[-(1:burn)]))
 	results[[6]] <- LVtab
-	names(results) <- c("cutPoints", "logLikelihood", "acceptanceRates", "nCutPoints", "nCutPointsMAP", "nCutPointsPosterior", "theta")
+	names(results) <- c("cutPoints", "logLikelihood", "acceptanceRates", "nCutPoints", "nCutPointsMAP", "nCutPointsPosterior")
 	#posterior mode of number of cutpoints
 	L <- as.numeric(names(table(Lvalues[-(1:burn)]))[order(table(Lvalues[-(1:burn)]), decreasing=T)[1]])
 	cat(paste0( "     Most probable number of cutpoints equals ", L, " with: P(l_n = ",L,"|x) = ",as.numeric(-sort(-LVtab)[1])),"\n")
@@ -475,10 +606,6 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 	}
 
 	results[[1]] = cutPoints[Lindex,1:L]
-	if(saveTheta == TRUE){
-		thinnedIndex <- Lindex[seq(1,length(Lindex), by = 20)]
-		results[[7]] <- thetaValues[thinnedIndex, ]
-	}
 	if(is.null(finalIterationPdf) == FALSE){
 		pdf(file = paste0(finalIterationPdf,"/",dName,"_mcmcTrace.pdf"), width = 20, height = 10)
 		split.screen( figs = c( 2, 1 ) )
@@ -528,21 +655,110 @@ mcmcSampler <- function(myData, nIter, finalIterationPdf, modelVariance, mhPropR
 		if(missing(dName)  == FALSE){
 			title( dName, outer = TRUE , line=-1)
 		}
-		close.screen( all.screens = TRUE )
+		close.screen( all = TRUE )
 		dev.off()
 	}
 
 	return(results)
 }
 
-beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSinglePropRange=40, startPoint = 2, 
-		timeScale, savePlots, zeroNormalization = FALSE, LRange = 0:30, tau = 0.05,
-		gammaParameter = 2, nu0 = 0.1, alpha0 = 1, beta0 = 1, subsetIndex, saveTheta = FALSE, sameVariance = TRUE, Prior = "complexity"){
+
+# auta den ta xw ftiaksei
+
+areaPerPhase <- function(cutPoints, myData, timeScale){
+	m <- dim(cutPoints)[1]
+	nCutPoints <- dim(cutPoints)[2]
+	auc <- array(data = NA, dim = c(m, nCutPoints))
+	myMeans <- rowMeans(myData)
+	if(missing(timeScale)){timeScale = 1}
+
+	for (i in 1:m){
+		xValues <- c(1, cutPoints[i,])
+		yValues <- myMeans[xValues]
+		auc[i, ] <- diff(yValues)*diff(xValues)*timeScale/2 + c(0, (cutPoints[i,2] - cutPoints[i,1])*yValues[2] , (cutPoints[i,3] - cutPoints[i,3])*yValues[3])*timeScale
+	}
+	Sresults <- array(data = NA, dim = c(3, 2))
+	colnames(Sresults) <- c("mean", "var")
+	rownames(Sresults) <- c("area_phase_1", "area_phase_2", "area_phase_3")
+	Sresults[,1] <- apply(auc, 2, mean)
+	Sresults[,2] <- apply(auc, 2, var)
+	results <- vector("list", length=2)
+	names(results) <- c("PosteriorSummary", "mcmc_auc")
+	results[[1]] <- Sresults
+	results[[2]] <- auc
+	return(results)
+}
+
+# auta den ta xw ftiaksei
+
+ratePerPhase <- function(cutPoints, myData, timeScale){
+	m <- dim(cutPoints)[1]
+	nCutPoints <- dim(cutPoints)[2]
+	myRates <- array(data = NA, dim = c(m, nCutPoints))
+	myMeans <- rowMeans(myData)
+	if(missing(timeScale)){timeScale = 1}
+
+	for (i in 1:m){
+		xValues <- c(1, cutPoints[i,])
+		yValues <- myMeans[xValues]
+		myRates[i, ] <- diff(yValues)/(diff(xValues)*timeScale)
+	}
+	Sresults <- array(data = NA, dim = c(3, 2))
+	colnames(Sresults) <- c("mean", "var")
+	rownames(Sresults) <- c("rate_phase_1", "rate_phase_2", "rate_phase_3")
+	Sresults[,1] <- apply(myRates, 2, mean)
+	Sresults[,2] <- apply(myRates, 2, var)
+	results <- vector("list", length=2)
+	names(results) <- c("PosteriorSummary", "mcmc_rates")
+	results[[1]] <- Sresults
+	results[[2]] <- myRates
+	return(results)
+}
+
+
+
+
+
+getVariance <- function(myDataList, blankThreshold){
+	if(missing(blankThreshold)){blankThreshold = 0.02}
+	n <- dim(myDataList[[1]])[2]
+	nTime <- dim(myDataList[[1]])[1]
+	nReps <- length(myDataList)
+	sdPerPoint <- numeric(nTime)
+	j <- 0
+	for(i in 1:n){
+		myData <- myDataList[[1]][,i]
+		for(k in 2:nReps){
+			myData <- rbind(myData, myDataList[[k]][,i])
+		}
+		if(max(myData) > blankThreshold){
+			sdPerPoint  <- sdPerPoint  + apply(myData, 2, var)
+			j <- j + 1
+		}
+	}
+	sdPerPoint <- sdPerPoint/j
+	smallIndex <- which(sdPerPoint < 10^{-5})
+	if(length(smallIndex) > 0){
+		sdPerPoint[smallIndex] <- rep(10^{-5}, length(smallIndex))
+	}
+	sdPerPoint <- sqrt(sdPerPoint)
+	return(sdPerPoint)
+}
+
+
+growthPhaseFullMCMC <- function(myDataList, burn, nIter, mhPropRange = 1, mhSinglePropRange, movesRange = c(2,3), startPoint = 2, 
+		getSDvalues, timeScale, blankThreshold, savePlots, showProgress = FALSE, zeroNormalization = FALSE, L = 3, LRange = 0:30, tau = 0.1,
+		beta_prior_parameters = c(0.1, 10), epsilon_proposal_sd = 0.1, gammaParameter = 6, nu0 = 1, alpha0 = 1, beta0 = 1){
 #	burn = 2000, nIter = 5000,mhPropRange = 1, mhSinglePropRange = 50, getSDvalues = T, startPoint=54, timeScale = 1/6,
-	cat("\n")
 	myColNames <- colnames(myDataList[[1]])
 	if(missing(timeScale)){timeScale = 1/1}
-#	if(missing(zeroNormalization)){zeroNormalization = TRUE}
+	if(missing(showProgress)){showProgress = FALSE}
+#	if(missing(blankThreshold)){blankThreshold = 0.02}
+	if(missing(blankThreshold)){blankThreshold = -10^9}
+	if(missing(burn)){burn = 2000}
+	if(missing(nIter)){nIter = 5000}
+	if(missing(zeroNormalization)){zeroNormalization = TRUE}
+	if(missing(LRange)){LRange = L}
 	Lmax <- max(LRange)
 	LRange = 0:Lmax
 	if(burn > nIter - 1){stop("`burn` should be smaller than `nIter`.")}
@@ -561,13 +777,9 @@ beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSi
 	if( startPoint < 2){ startPoint = 2 }
 	if(missing(mhPropRange)){mhPropRange = 1}
 	if(missing(mhSinglePropRange)){ mhSinglePropRange = dim(myDataList[[1]])[1]/10  }
-	getSDvalues = TRUE
-	if(Prior == "complexity"){
-		cat(paste0("*  Assuming a complexity prior distribution on the number of change-points with `gammaParameter = ", gammaParameter,"`."), "\n")	
-	}else{
-		cat(paste0("*  Assuming a Poisson prior distribution on the number of change-points with rate `gammaParameter = ", gammaParameter,"`."), "\n")
-#		cat(paste0("*      [WARNING]: The Poisson distribution is NOT suggested!"), "\n")		
-	}
+	if(missing(movesRange)){movesRange = as.character(1:3)}
+	if(missing(getSDvalues)){getSDvalues = TRUE}
+	if(getSDvalues == FALSE){sdValues = NULL}
 	if(zeroNormalization){
 		cat(paste0("*  Normalizing at time zero... "))	
 		myDataList <- normalizeTime0(myDataList = myDataList)
@@ -576,68 +788,51 @@ beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSi
 	if(getSDvalues == TRUE){
 		cat(paste0("*  Computing posterior parameters... "))
 		priorParameters <- computeEmpiricalPriorParameters(myDataList = myDataList, nu0 = nu0, alpha0 = alpha0, beta0 = beta0)
-		if(sameVariance == TRUE){
-			cat(paste0(" using the same variance per time series... "))
-			posteriorParameters <- computePosteriorParameters(myDataList = myDataList, priorParameters = priorParameters)
-		}else{
-			cat(paste0(" using different variance per time series... "))
-			posteriorParameters <- computePosteriorParametersFree(myDataList = myDataList, priorParameters = priorParameters)
-		}
+		posteriorParameters <- computePosteriorParameters(myDataList = myDataList, priorParameters = priorParameters)
 		cat(paste0(" done.","\n"))
 	}
-	L = 1	# not really used anywhere
-#	zz <- file(paste0(savePlots,"/numberCutPointsMAP.txt"), open = "w")
+	zz <- file(paste0(savePlots,"/numberCutPointsMAP.txt"), open = "w")
 	nReps <- length(myDataList)
 	n <- dim(myDataList[[1]])[2]
 	cutPoints <- vector("list", length = n)
 	cutPointsVar <- vector("list", length = n)
+#	cutPoints <- array(data = NA, dim = c(n, L))
+#	cutPointsVar <- array(data = NA, dim = c(n, L))
+	areaMeanPerPhase <- array(data=NA, dim = c(n, L))
+	areaVarPerPhase <- array(data=NA, dim = c(n, L))
+	rateMeanPerPhase <- array(data=NA, dim = c(n, L))
+	rateVarPerPhase <- array(data=NA, dim = c(n, L))
+	colnames(areaMeanPerPhase) <- colnames(areaVarPerPhase) <- paste0("phase_", 1:L)
 	if(nReps < 2){stop("no replicates")}
 	cat(paste0("*  MCMC sampler parameters: nIter = ", nIter, ", burn = ", burn, ", startPoint = ", startPoint ),"\n")
 	cat(paste0("*  Running MCMC for ", n, " subjects..."), "\n")	
 	NAindex <- c()
-	results <- vector("list", length = 11)
+	results <- vector("list", length = 6)
 	results[[3]] <- vector("list", length = n)
 	results[[5]] <- vector("list", length = n)
 	results[[4]] <- numeric(n)
 	results[[6]] <- myColNames
-	results[[7]] <- vector("list", length = n)
-	results[[8]] <- vector("list", length = n)
-	results[[9]] <- vector("list", length = n)
-	checkCondition <- -99
-	if( missing(subsetIndex) == FALSE ){
-		checkCondition <- (1:n)[-subsetIndex]
-		cat(paste0("*                [NOTE] skipping ", n - length(subsetIndex), " subjects"), "\n")	
-	}else{
-		subsetIndex <- 1:n
-	}
-	movesRange = c(2,3)
 	for (i in 1:n){
+		cat(paste0("*    i = ", i, ", name: ", myColNames[i], " " ))
 		myData <- myDataList[[1]][ , i]
-		if( i %in% checkCondition ){
-			#cat(paste0("                [SKIPPED] subsetIndex enabled.","\n"))
+		if( max( myData ) < blankThreshold ){
+			cat(paste0("                [SKIPPED] this looks like a blank well.","\n"))
 			NAindex <- c(NAindex, i)
 		}else{
-			cat(paste0("*    i = ", i, ", name: ", myColNames[i], " " ))
 			for (j in 2:nReps){
 				myData <- cbind(myData, myDataList[[j]][ , i])
 			}
 			posteriorParametersIter <- posteriorParameters
 			posteriorParametersIter[[1]] <- posteriorParameters[[1]][i,]
-			if(sameVariance == FALSE){
-				posteriorParametersIter[[4]] <- posteriorParameters[[4]][i,]
-			}
 			mhRunForSubject <- mcmcSampler(myData = myData, nIter = nIter, mhPropRange = mhPropRange, dName = myColNames[i], burn = burn,
 							mhSinglePropRange = mhSinglePropRange, movesRange = movesRange, finalIterationPdf = savePlots,
 							startPoint = startPoint, postPar = posteriorParametersIter, timeScale = timeScale, 
-							iterPerPlotPrefix = paste0("plot-", i), priorParameters = priorParameters, 
+							showProgress = showProgress, iterPerPlotPrefix = paste0("plot-", i), priorParameters = priorParameters, 
 							L = L, LRange = LRange, tau = tau, 
-							gammaParameter = gammaParameter, saveTheta = saveTheta, Prior = Prior)
+							beta_prior_parameters = beta_prior_parameters, epsilon_proposal_sd = epsilon_proposal_sd, gammaParameter = gammaParameter)
 			results[[3]][[i]] <- mhRunForSubject$nCutPointsPosterior
 			results[[4]][i] <- mhRunForSubject$nCutPointsMAP
 			results[[5]][[i]] <- mhRunForSubject$acceptanceRates
-			results[[7]][[i]] <- mhRunForSubject$cutPoints
-			results[[8]][[i]] <- mhRunForSubject$theta
-			results[[9]][[i]] <- mhRunForSubject$nCutPoints
 			if(is.array(mhRunForSubject$cutPoints) == TRUE){
 				cutPoints[[i]] <- apply(mhRunForSubject$cutPoints, 2, median)
 				cutPointsVar[[i]] <- apply(mhRunForSubject$cutPoints, 2, var)
@@ -645,32 +840,53 @@ beast <- function(myDataList, burn = 20000, nIter = 70000, mhPropRange = 1, mhSi
 				cutPoints[[i]] <- median(mhRunForSubject$cutPoints)
 				cutPointsVar[[i]] <- var(mhRunForSubject$cutPoints)
 			}
-#			cat(paste0(myColNames[i], " ", mhRunForSubject$nCutPointsMAP), file = zz, "\n")
+			cat(paste0(myColNames[i], " ", mhRunForSubject$nCutPointsMAP), file = zz, "\n")
+			#getArea <- areaPerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
+			#getRate <- ratePerPhase(cutPoints = mhRunForSubject$cutPoints[-(1:burn), ], myData = myData, timeScale = timeScale)$PosteriorSummary
+			#rateMeanPerPhase[i, ] <- getRate[,1]
+			#rateVarPerPhase[i, ] <- getRate[,2]
+			#areaMeanPerPhase[i, ] <- getArea[,1]
+			#areaVarPerPhase[i, ] <- getArea[,2]
 		}
 	}
-#	close(zz)
+	close(zz)
+#	print(cutPoints)
 	results[[1]] <- lapply(cutPoints, function(x){x*timeScale})
 	results[[2]] <- lapply(cutPointsVar, function(x){x*(timeScale^2)})
-	names(results) <- c("Cutpoint_posterior_median", 
-				"Cutpoint_posterior_variance", 
-				"NumberOfCutPoints_posterior_distribution", 
-				"NumberOfCutPoints_MAP", 
-				"Metropolis-Hastings_acceptance_rate", 
-				"subject_ID",
-				"Cutpoint_mcmc_trace_map",
-				"theta",
-				"nCutPointsTrace",
-				"subsetIndex",
-				"data")
-	results$subsetIndex = subsetIndex
-	results$data = myDataList
+	names(results) <- c("Cutpoint_posterior_median", "Cutpoint_posterior_variance", "NumberOfCutPoints_posterior_distribution", "NumberOfCutPoints_MAP", "Metropolis-Hastings_acceptance_rate", "subject_ID")
+#	results[[3]] <- rateMeanPerPhase
+#	results[[4]] <- rateVarPerPhase
+#	results[[5]] <- areaMeanPerPhase
+#	results[[6]] <- areaVarPerPhase
+#	if(length(NAindex) > 0){
+#		myDF <- results[[1]][-NAindex,]
+#		rownames(myDF) <- myColNames[-NAindex]
+#	}else{
+#		myDF <- results[[1]]
+#		rownames(myDF) <- myColNames
+#	}
+#	cat(paste0("*  Outlier detection at the 0.01 level... "),"\n")
+#	cat(paste0("*  "),"\n")
+#	if(missing(savePlots) == FALSE){
+#		pdf(file = paste0(savePlots,"/outliers_projection.pdf"), width = 18, height = 12)
+#			mvOut <- aq.plot(myDF, alpha=0.01)
+#		dev.off()
+#	}else{
+#		mvOut <- aq.plot(myDF, alpha=0.01)
+#	}
+#	results[[7]] <- mvOut$outliers
+#	cat(paste0("*  "),"\n")
+#	cat(paste0("*                                     ... done."),"\n")
+#	rownames(results[[1]]) <- rownames(results[[2]]) <- rownames(results[[3]]) <- rownames(results[[4]]) <- rownames(results[[5]])<- rownames(results[[6]]) <- myColNames
+#	names(results) <- c("posteriorMedian", "posteriorVar", "rateMean", "rateVar", "areaMean", "areaVar", "outliers")
 	cat(paste0("*  ALL DONE."),"\n")
-	if(is.null(savePlots) == FALSE){ 
+	if(missing(savePlots) == FALSE){ 
 		cat(paste0("*  See produced *.pdf files in: `",getwd(),"/",savePlots,"`"),"\n")
 	}
 
-        class(results) <- c('list', 'beast.object')
- 	return(results)
+
+
+	return(results)
 
 }
 
@@ -696,7 +912,8 @@ normalizeTime0 <- function(myDataList){
 }
 
 
-computePosteriorParameters <- function(myDataList, priorParameters){
+computePosteriorParameters <- function(myDataList, priorParameters, blankThreshold){
+	if(missing(blankThreshold)){blankThreshold = -10^9}
 	n <- dim(myDataList[[1]])[2]
 	nTime <- dim(myDataList[[1]])[1]
 	nReps <- length(myDataList)
@@ -711,8 +928,11 @@ computePosteriorParameters <- function(myDataList, priorParameters){
 		for(k in 2:nReps){
 			myData <- rbind(myData, myDataList[[k]][,i])
 		}
-		j <- j + 1
-		alive <- c(alive, i)
+		if(max(myData) > blankThreshold){
+			j <- j + 1
+			alive <- c(alive, i)
+#			xMean <- xMean + colMeans(myData)
+		}
 	}
 	nAlive <- j
 
@@ -741,56 +961,12 @@ computePosteriorParameters <- function(myDataList, priorParameters){
 	
 }
 
+# ara prepei na valw opwsdipote tin empirical prior ston meso.
 
-# different variance per time series
-computePosteriorParametersFree <- function(myDataList, priorParameters){
-	n <- dim(myDataList[[1]])[2]
-	nTime <- dim(myDataList[[1]])[1]
-	nReps <- length(myDataList)
-	mu0 <- priorParameters$mu0
-	nu0 <- priorParameters$nu0
-	alpha0 <- priorParameters$alpha0
-	beta0 <- priorParameters$beta0
-	j <- 0
-	alive <- c()
-	for(i in 1:n){
-		myData <- myDataList[[1]][,i]
-		for(k in 2:nReps){
-			myData <- rbind(myData, myDataList[[k]][,i])
-		}
-		j <- j + 1
-		alive <- c(alive, i)
-	}
-	nAlive <- j
 
-	meanParameters1 <- array(data = 0, dim = c(n, nTime))
-	meanParameters2 <- nReps + nu0
-	varianceParameters1 <- alpha0 + nReps/2	
-	varianceParameters2 <- array(data = 0, dim = c(n, nTime))	
-	for(i in alive){
-		myData <- myDataList[[1]][,i]
-		for(k in 2:nReps){
-			myData <- rbind(myData, myDataList[[k]][,i])
-		}
-		cSum <- colSums(myData)
-		meanParameters1[i, ] <- (cSum + nu0*mu0)/meanParameters2
-		sumOverN <- meanParameters2*colSums(myData^2) - cSum^2 - 2*nu0*mu0*cSum
-		varianceParameters2[i, ] <- beta0 + 0.5*(nReps*nu0*mu0^2 + sumOverN)/meanParameters2
-	}
-
-	results <- vector("list", length = 4)
-	results[[1]] <- meanParameters1
-	results[[2]] <- meanParameters2
-	results[[3]] <- varianceParameters1
-	results[[4]] <- varianceParameters2
-
-	names(results) <- c("meanPar1", "meanPar2", "varPar1", "varPar2")
-	return(results)
-	
-}
-
-computeEmpiricalPriorParameters <- function(myDataList, nu0 = 1, alpha0 = 1, beta0 = 1){
+computeEmpiricalPriorParameters <- function(myDataList, blankThreshold, nu0 = 1, alpha0 = 1, beta0 = 1){
 	priorParameters <- vector("list",length = 4)
+	if(missing(blankThreshold)){blankThreshold = -10^9}
 	n <- dim(myDataList[[1]])[2]
 	nTime <- dim(myDataList[[1]])[1]
 	nReps <- length(myDataList)
@@ -802,9 +978,11 @@ computeEmpiricalPriorParameters <- function(myDataList, nu0 = 1, alpha0 = 1, bet
 		for(k in 2:nReps){
 			myData <- rbind(myData, myDataList[[k]][,i])
 		}
-		j <- j + 1
-		alive <- c(alive, i)
-		xMean <- xMean + colMeans(myData)
+		if(max(myData) > blankThreshold){
+			j <- j + 1
+			alive <- c(alive, i)
+			xMean <- xMean + colMeans(myData)
+		}
 	}
 	nAlive <- j
 	xMean <- xMean/nAlive
@@ -818,134 +996,4 @@ computeEmpiricalPriorParameters <- function(myDataList, nu0 = 1, alpha0 = 1, bet
 
 }
 
-#' @export
-print.beast.object <- function(x, ...){
-        if( 'beast.object' %in% class(x) ){
-                cat("\n")
-		subsetIndex <- x$subsetIndex
-		cat(paste0("Table of frequencies of the most probable number of change-points:"),'\n')
-		print(table(names(unlist(lapply(x$NumberOfCutPoints_MAP, function(y){table(y)})))[subsetIndex]))
-		cat("\n")
-		cat(paste0("Summary per time-series:"),'\n')
-		for(i in subsetIndex){
-			cat(paste0(x$subject_ID[[i]],": "), 
-				paste0("P(",x$NumberOfCutPoints_MAP[[i]], " change-points|data) ="), 
-				paste0(round(as.numeric(x$NumberOfCutPoints_posterior_distribution[[i]][as.character(x$NumberOfCutPoints_MAP[[i]])]),2)), 
-				paste0("located at"),paste0( x$Cutpoint_posterior_median[[i]]),
-			 "\n")
-		}
-                cat('\n')
-        }else{
-                cat(paste("    The input is not in class `beast.object`"),'\n')
-        }
-}
-
-
-#' @export
-plot.beast.object <- function (x, fileName, width = 9, height = 6, pointsize = 12, 
-    ylab = "x", xlab = "t", timeScale = 1, myPal, boxwex = 0.20, ...) 
-{
-    if ("beast.object" %in% class(x)) {
-        cat("\n")
-        if (timeScale < 0) {
-            stop("timeScale should be positive.")
-        }
-        subsetIndex <- x$subsetIndex
-        mutantNames <- colnames(x$data[[1]])[subsetIndex]
-        nTime <- dim(x$data[[1]])[1]
-        n <- dim(x$data[[1]])[2]
-        nReps <- length(x$data)
-        xMax <- max(unlist(x$data))
-        xMin <- min(unlist(x$data))
-        myPositions <- floor(seq(0, nTime, length = 10))
-        myLabels <- round(myPositions * timeScale, 1)
-        pdf(fileName, width = width, height = height, pointsize = pointsize)
-        nColors <- length(table(names(unlist(lapply(x$NumberOfCutPoints_MAP, 
-            function(y) {
-                table(y)
-            })))[subsetIndex]))
-        if (nColors < 10) {
-            myPal <- brewer.pal(n = nColors, name = "Set1")
-        }
-        else {
-            stop("the range of possible numbers of change-points is larger than 9, please manually define the colors to `myPal` argument")
-        }
-        myMeanTimeSeries <- array(data = 0, dim = c(n, nTime))
-        for (i in subsetIndex) {
-            for (j in 1:nReps) {
-                myMeanTimeSeries[i, ] <- myMeanTimeSeries[i, 
-                  ] + x$data[[j]][, i]
-            }
-            myMeanTimeSeries[i, ] <- myMeanTimeSeries[i, ]/nReps
-        }
-        if (timeScale == 1) {
-            matplot(t(myMeanTimeSeries[subsetIndex, ]), type = "l", 
-                col = myPal[as.numeric(as.factor(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))], 
-                lty = 1, xlab = "t", ylab = paste0("average ", 
-                  ylab))
-        }
-        else {
-            matplot(t(myMeanTimeSeries[subsetIndex, ]), xaxt = "n", 
-                type = "l", col = myPal[as.numeric(as.factor(unlist(x$NumberOfCutPoints_MAP)[subsetIndex]))], 
-                lty = 1, xlab = "t", ylab = paste0("average ", 
-                  ylab))
-            axis(1, at = myPositions, labels = myLabels)
-        }
-        legend("topleft", col = c(0, myPal), lty = 1, c("MAP number of change-points:", 
-            paste0(names(table(unlist(x$NumberOfCutPoints_MAP)[subsetIndex])), 
-                " (", as.numeric(table(unlist(x$NumberOfCutPoints_MAP)[subsetIndex])), 
-                " time-series)")))
-        iter <- 0
-        for (i in subsetIndex) {
-            iter <- iter + 1
-            tmp <- x$data[[1]][, i]
-            if (nReps > 1) {
-                for (j in 2:nReps) {
-                  tmp <- cbind(tmp, x$data[[j]][, i])
-                }
-            }
-            if (timeScale == 1) {
-                matplot(tmp, type = "l", lwd = 2, lty = 1, col = 2:(nReps + 
-                  1), ylim = c(xMin, xMax), ylab = ylab, xlab = xlab, 
-                  main = paste0("", mutantNames[iter], ""))
-            }
-            else {
-                matplot(tmp, xaxt = "n", type = "l", lwd = 2, 
-                  lty = 1, col = 2:(nReps + 1), ylim = c(xMin, xMax), 
-                  ylab = ylab, xlab = xlab, main = paste0("", 
-                    mutantNames[iter], ""))
-                axis(1, at = myPositions, labels = myLabels)
-            }
-            l <- x$NumberOfCutPoints_MAP[[i]]
-		if(l > 0){
-            abline(v = x$Cutpoint_posterior_median[[i]], lty = 3, col = "gray")
-		}
-            yRange <- c(0, max(tmp))
-            yPoints <- seq(from = 0, to = xMax, length = l + 
-                2)[-c(1, l + 2)]
-		lY <- length(yPoints)
-		yPoints <- yPoints[lY:1]
-            if(l > 0){
-			if (l == 1) {
-			boxplot(x$Cutpoint_mcmc_trace_map[[i]], horizontal = TRUE, 
-			  add = TRUE, at = yPoints, boxwex = boxwex, col = "gray", 
-			  xaxt = "n")
-			}
-			else {
-			for (j in 1:l) {
-			  boxplot(x$Cutpoint_mcmc_trace_map[[i]][, j], 
-			    horizontal = TRUE, add = TRUE, at = yPoints[j], 
-			    boxwex = boxwex, col = "gray", xaxt = "n")
-			}
-			}
-		}
-        }
-        dev.off()
-        cat(paste0("See produced file: ", fileName), "\n")
-    }
-    else {
-        cat(paste("    The input is not in class `beast.object`"), 
-            "\n")
-    }
-}
 
